@@ -118,12 +118,20 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     loadTxt();
   }, [book.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 章节变化时滚动到顶部
+  // 章节变化时滚动到顶部，并立即通知父组件保存进度
   useEffect(() => {
     if (!isRestoringRef.current) {
       containerRef.current?.scrollTo(0, 0);
     }
-  }, [chapterIndex]);
+    // 章节切换后立即通知父组件保存进度（键盘切换章节时滚动事件可能丢失）
+    if (chapters.length > 0 && !isRestoringRef.current) {
+      const totalChars = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
+      const readChars = chapters.slice(0, chapterIndex).reduce((sum, ch) => sum + ch.content.length, 0);
+      const progress = totalChars > 0 ? (readChars / totalChars) * 100 : 0;
+      const location = JSON.stringify({ chapter: chapterIndex, scrollRatio: 0 });
+      onLocationChange(location, progress);
+    }
+  }, [chapterIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 滚动时计算进度并通知父组件
   const handleScroll = useCallback(() => {

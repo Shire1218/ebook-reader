@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Book } from '@/types';
 import { formatFileSize, formatTime } from '@/utils/fileParser';
 import { BookOpen } from 'lucide-react';
+import BookCardActions from './BookCardActions';
 
 interface BookCardListProps {
   book: Book;
@@ -58,6 +59,10 @@ export default function BookCardList({ book }: BookCardListProps) {
           </span>
         </div>
         <span className="text-xs text-warm-300 w-20 text-right">{formatTime(book.lastReadTime)}</span>
+        {/* 操作按钮 - 悬停时显示 */}
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <BookCardActions book={book} />
+        </div>
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { ZoomIn, ZoomOut } from 'lucide-react';
 import type { Book } from '@/types';
 import { getBookFile } from '@/utils/db';
 
-// 配置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// 使用本地打包的 worker 文件，避免 CDN 加载失败
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export interface PdfReaderRef {
   goToPage: (page: number) => void;
@@ -25,6 +27,12 @@ const themeColors: Record<string, { bg: string }> = {
   green: { bg: '#E8F0E4' },
 };
 
+// 缩放范围
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 4.0;
+const SCALE_STEP = 0.15;
+const BASE_RENDER_SCALE = 1.5;
+
 const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
   book,
   theme,
@@ -37,6 +45,7 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [zoom, setZoom] = useState(1);
 
   // 暴露跳转方法给父组件
   useImperativeHandle(ref, () => ({
@@ -112,7 +121,7 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
 
       try {
         const page = await pdf.getPage(currentPage);
-        const scale = 1.5;
+        const scale = BASE_RENDER_SCALE * zoom;
         const viewport = page.getViewport({ scale });
 
         const context = canvas.getContext('2d');
@@ -139,7 +148,25 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
     if (!isLoading) {
       renderPage();
     }
-  }, [currentPage, totalPages, isLoading, onLocationChange]);
+  }, [currentPage, totalPages, isLoading, zoom, onLocationChange]);
+
+  // Ctrl + 滚轮缩放（阻止浏览器默认缩放）
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function handleWheel(e: WheelEvent) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? SCALE_STEP : -SCALE_STEP;
+        setZoom((prev) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev + delta)));
+      }
+    }
+
+    // passive: false 才能 preventDefault
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // 键盘事件
   useEffect(() => {
@@ -154,11 +181,32 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
         if (currentPage > 1) {
           setCurrentPage((p) => p - 1);
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === '=') {
+        e.preventDefault();
+        setZoom((prev) => Math.min(MAX_SCALE, prev + SCALE_STEP));
+      } else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        setZoom((prev) => Math.max(MIN_SCALE, prev - SCALE_STEP));
+      } else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        e.preventDefault();
+        setZoom(1);
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPage, totalPages]);
+
+  const handleZoomIn = useCallback(() => {
+    setZoom((prev) => Math.min(MAX_SCALE, prev + SCALE_STEP));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoom((prev) => Math.max(MIN_SCALE, prev - SCALE_STEP));
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    setZoom(1);
+  }, []);
 
   const colors = themeColors[theme] ?? themeColors.light!;
 
@@ -175,10 +223,37 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
 
   return (
     <div
-      className="flex-1 min-h-0 overflow-auto flex items-center justify-center"
+      className="flex-1 min-h-0 overflow-auto flex flex-col items-center justify-center relative"
       ref={containerRef}
       style={{ backgroundColor: colors.bg }}
     >
+      {/* 缩放控制栏 */}
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm border border-black/10 px-1 py-0.5">
+        <button
+          onClick={handleZoomOut}
+          disabled={zoom <= MIN_SCALE}
+          className="p-1.5 rounded hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="缩小 (Ctrl+-)"
+        >
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={handleZoomReset}
+          className="px-2 py-1 text-xs tabular-nums hover:bg-black/5 rounded transition-colors min-w-[48px] text-center"
+          title="重置缩放 (Ctrl+0)"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={handleZoomIn}
+          disabled={zoom >= MAX_SCALE}
+          className="p-1.5 rounded hover:bg-black/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          title="放大 (Ctrl+=)"
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
       <div className="shadow-2xl">
         <canvas ref={canvasRef} className="block" />
       </div>

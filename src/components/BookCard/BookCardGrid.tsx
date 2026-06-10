@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Book } from '@/types';
 import { formatTime } from '@/utils/fileParser';
 import { BookOpen } from 'lucide-react';
+import BookCardActions from './BookCardActions';
 
 interface BookCardGridProps {
   book: Book;
@@ -18,7 +19,7 @@ export default function BookCardGrid({ book }: BookCardGridProps) {
     <div
       onClick={handleClick}
       className="group cursor-pointer rounded-xl bg-white border border-warm-200 overflow-hidden
-                 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+                 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 relative"
     >
       {/* 封面区域 */}
       <div
@@ -27,9 +28,13 @@ export default function BookCardGrid({ book }: BookCardGridProps) {
       >
         <BookOpen className="w-12 h-12 text-white/80" />
         {/* 格式标签 */}
-        <span className="absolute top-2 right-2 px-2 py-0.5 text-xs font-medium bg-black/30 text-white rounded-md backdrop-blur-sm">
+        <span className="absolute top-2 left-2 px-2 py-0.5 text-xs font-medium bg-black/30 text-white rounded-md backdrop-blur-sm">
           {book.format.toUpperCase()}
         </span>
+        {/* 操作按钮 - 悬停时显示 */}
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          <BookCardActions book={book} />
+        </div>
       </div>
 
       {/* 信息区域 */}

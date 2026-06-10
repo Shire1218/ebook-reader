@@ -17,15 +17,17 @@ export default function Reader() {
   const navigate = useNavigate();
   const books = useBookStore((s) => s.books);
   const updateBook = useBookStore((s) => s.updateBook);
+  const loadBooks = useBookStore((s) => s.loadBooks);
   const [showSettings, setShowSettings] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [toc, setToc] = useState<TocItem[]>([]);
-  const [progress, setProgress] = useState(0);
-  const [currentLocation, setCurrentLocation] = useState('');
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 用 ref 保存最新的位置和进度，防止组件卸载时丢失
+  const pendingLocationRef = useRef<string>('');
+  const pendingProgressRef = useRef<number>(0);
 
   // 阅读器 ref
   const epubReaderRef = useRef<EpubReaderRef>(null);
@@ -39,6 +41,11 @@ export default function Reader() {
   const setTheme = usePreferenceStore((s) => s.setTheme);
 
   const book = books.find((b) => b.id === bookId);
+  const bookRef = useRef(book);
+  bookRef.current = book;
+
+  const [progress, setProgress] = useState(book?.progress ?? 0);
+  const [currentLocation, setCurrentLocation] = useState(book?.currentLocation ?? '');
 
   // 主题背景映射
   const themeBg: Record<string, string> = {
@@ -47,6 +54,13 @@ export default function Reader() {
     sepia: 'bg-warm-100 text-warm-800',
     green: 'bg-eye-bg text-eye-text',
   };
+
+  // 如果书籍数据未加载（如直接通过 URL 访问），自动加载
+  useEffect(() => {
+    if (books.length === 0) {
+      loadBooks();
+    }
+  }, [books.length, loadBooks]);
 
   // 加载书签
   useEffect(() => {
@@ -71,21 +85,42 @@ export default function Reader() {
       setCurrentLocation(location);
       setProgress(newProgress);
 
-      // 防抖保存（2秒内只保存一次）
+      // 记录最新值到 ref，用于组件卸载时刷新保存
+      pendingLocationRef.current = location;
+      pendingProgressRef.current = newProgress;
+
+      // 防抖保存（2秒内只保存一次），使用 bookRef 避免闭包捕获过期 book
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        if (book) {
+        const latestBook = bookRef.current;
+        if (latestBook) {
           updateBook({
-            ...book,
-            currentLocation: location,
-            progress: newProgress,
+            ...latestBook,
+            currentLocation: pendingLocationRef.current,
+            progress: pendingProgressRef.current,
             lastReadTime: Date.now(),
           });
         }
       }, 2000);
     },
-    [book, updateBook]
+    [updateBook]
   );
+
+  // 组件卸载时立即刷新保存进度，防止防抖定时器未触发导致进度丢失
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const latestBook = bookRef.current;
+      if (latestBook && pendingLocationRef.current) {
+        updateBook({
+          ...latestBook,
+          currentLocation: pendingLocationRef.current,
+          progress: pendingProgressRef.current,
+          lastReadTime: Date.now(),
+        });
+      }
+    };
+  }, [updateBook]);
 
   // 目录加载回调
   const handleTocLoaded = useCallback((tocItems: { label: string; href: string }[]) => {

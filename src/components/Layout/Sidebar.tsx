@@ -1,11 +1,9 @@
-import { BookOpen, Clock, Heart, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BookOpen, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 
 const navItems = [
   { icon: BookOpen, label: '书架', path: '/' },
-  { icon: Clock, label: '最近阅读', path: '/?filter=recent' },
-  { icon: Heart, label: '收藏', path: '/?filter=favorite' },
   { icon: Settings, label: '设置', path: '/settings' },
 ];
 
@@ -15,8 +13,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   const isActive = (path: string) => {
-    if (path === '/') return location.pathname === '/';
-    return location.pathname + location.search === path;
+    return location.pathname === path;
   };
 
   return (

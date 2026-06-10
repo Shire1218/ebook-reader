@@ -66,13 +66,24 @@ export async function updateBook(book: Book): Promise<void> {
   return addBook(book);
 }
 
-// 删除书籍（同时删除文件数据）
+// 删除书籍（同时删除文件数据和关联书签）
 export async function deleteBook(id: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+    const tx = db.transaction([BOOKS_STORE, FILES_STORE, BOOKMARKS_STORE], 'readwrite');
     tx.objectStore(BOOKS_STORE).delete(id);
     tx.objectStore(FILES_STORE).delete(id);
+    // 清理关联书签
+    const bookmarkStore = tx.objectStore(BOOKMARKS_STORE);
+    const index = bookmarkStore.index('bookId');
+    const request = index.openCursor(id);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

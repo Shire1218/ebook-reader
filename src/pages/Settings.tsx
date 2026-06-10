@@ -1,4 +1,4 @@
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Keyboard } from 'lucide-react';
 import { usePreferenceStore } from '@/stores/preferenceStore';
 
 export default function Settings() {
@@ -155,6 +155,61 @@ export default function Settings() {
               onChange={(e) => setBrightness(Number(e.target.value))}
               className="w-full accent-warm-400"
             />
+          </div>
+        </section>
+
+        {/* 快捷键帮助 */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-medium text-warm-800 border-b border-warm-200 pb-2 flex items-center gap-2">
+            <Keyboard className="w-4 h-4" />
+            快捷键
+          </h2>
+          <div className="space-y-4">
+            {/* 通用快捷键 */}
+            <div>
+              <h3 className="text-xs font-medium text-warm-600 mb-2">通用</h3>
+              <div className="space-y-1.5">
+                {[
+                  { keys: ['←'], desc: '上一页 / 上一章' },
+                  { keys: ['→'], desc: '下一页 / 下一章' },
+                  { keys: ['PageUp'], desc: '向上翻屏' },
+                  { keys: ['PageDown'], desc: '向下翻屏' },
+                ].map((item) => (
+                  <div key={item.keys[0]} className="flex items-center justify-between py-1.5">
+                    <span className="text-sm text-warm-500">{item.desc}</span>
+                    <div className="flex items-center gap-1">
+                      {item.keys.map((k) => (
+                        <kbd key={k} className="px-2 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">
+                          {k}
+                        </kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* TXT 格式专属 */}
+            <div>
+              <h3 className="text-xs font-medium text-warm-600 mb-2">TXT 格式</h3>
+              <div className="space-y-1.5">
+                {[
+                  { keys: ['↑'], desc: '向上滚动' },
+                  { keys: ['↓'], desc: '向下滚动' },
+                  { keys: ['Space'], desc: '向下翻屏' },
+                ].map((item) => (
+                  <div key={item.keys[0]} className="flex items-center justify-between py-1.5">
+                    <span className="text-sm text-warm-500">{item.desc}</span>
+                    <div className="flex items-center gap-1">
+                      {item.keys.map((k) => (
+                        <kbd key={k} className="px-2 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">
+                          {k}
+                        </kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
 
