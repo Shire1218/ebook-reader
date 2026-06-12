@@ -82,16 +82,16 @@
 - [x] 笔记管理
 - [x] 标注导出
 
-### P4 - 体验优化（待开发）
-- [ ] 全文搜索
-- [ ] 快捷键支持
-- [ ] 动画效果优化
-- [ ] 性能优化
-- [ ] MOBI 格式支持
-- [ ] 书籍分类
-- [ ] 全文内搜索
-- [ ] 拖拽进度条以定位
-- [ ] 支持更多的字体
+### P4 - 体验优化（已完成）
+- [x] 全文搜索
+- [x] 快捷键支持
+- [x] 动画效果优化
+- [x] 性能优化
+- [x] MOBI 格式支持
+- [x] 书籍分类
+- [x] 全文内搜索
+- [x] 拖拽进度条以定位
+- [x] 支持更多的字体
 
 ### P5 - 编辑操作（待开发）
 - [ ] 文本编辑（复制、粘贴、删除）
@@ -132,7 +132,9 @@ e:\chrome\book\
 │   │   ├── Reader/
 │   │   │   ├── EpubReader.tsx         # EPUB 渲染器（epub.js）
 │   │   │   ├── TxtReader.tsx          # TXT 渲染器（滚动模式）
-│   │   │   └── PdfReader.tsx          # PDF 渲染器（pdfjs-dist）
+│   │   │   ├── PdfReader.tsx          # PDF 渲染器（pdfjs-dist）
+│   │   │   ├── MobiReader.tsx         # MOBI 渲染器（自研解析器）
+│   │   │   └── SelectionToolbar.tsx   # 文本选择工具栏
 │   │   ├── DropZone.tsx               # 拖拽导入蒙层
 │   │   └── EmptyState.tsx             # 空状态提示
 │   ├── pages/
@@ -143,11 +145,13 @@ e:\chrome\book\
 │   │   ├── bookStore.ts               # 书籍数据 store（CRUD + 搜索/排序）
 │   │   └── preferenceStore.ts         # 阅读偏好 store（localStorage 持久化）
 │   ├── hooks/
-│   │   └── useBookImport.ts           # 书籍导入 hook（文件解析 + IndexedDB 存储）
+│   │   ├── useBookImport.ts           # 书籍导入 hook（文件解析 + IndexedDB 存储）
+│   │   └── useKeyboardShortcuts.ts    # 全局快捷键 hook
 │   ├── utils/
 │   │   ├── db.ts                      # IndexedDB 工具（books/files/bookmarks/preferences）
 │   │   ├── fileParser.ts              # 文件解析工具（格式检测/元信息提取）
-│   │   └── txtParser.ts               # TXT 解析器（编码检测/章节分割/分页/HTML转换）
+│   │   ├── txtParser.ts               # TXT 解析器（编码检测/章节分割/分页/HTML转换）
+│   │   └── mobiParser.ts              # MOBI 解析器（PDB/LZ77 解压/文本提取）
 │   ├── types/
 │   │   └── index.ts                   # 全局类型定义
 │   ├── styles/
@@ -170,7 +174,7 @@ e:\chrome\book\
 
 ```typescript
 // 书籍格式
-type BookFormat = 'epub' | 'pdf' | 'txt';
+type BookFormat = 'epub' | 'pdf' | 'txt' | 'mobi';
 
 // 主题类型
 type ThemeType = 'light' | 'dark' | 'sepia' | 'green';
@@ -194,6 +198,7 @@ interface Book {
   currentChapter: string;
   lastReadTime: number;
   importTime: number;
+  category: string;           // 书籍分类
 }
 
 // 阅读偏好

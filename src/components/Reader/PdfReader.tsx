@@ -11,6 +11,7 @@ import { getBookFile } from '@/utils/db';
 
 export interface PdfReaderRef {
   goToPage: (page: number) => void;
+  scrollToSearchMatch: (matchIndex: number) => void;
 }
 
 interface PdfReaderProps {
@@ -21,6 +22,7 @@ interface PdfReaderProps {
   highlights: Highlight[];
   onTextSelected: (selection: { text: string; position: { x: number; y: number } }) => void;
   onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
+  searchQuery?: string;
 }
 
 // 高亮颜色映射
@@ -54,6 +56,7 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
   highlights,
   onTextSelected,
   onHighlightClick,
+  searchQuery,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
@@ -74,6 +77,20 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
     goToPage: (page: number) => {
       if (page >= 1 && page <= totalPages) {
         setCurrentPage(page);
+      }
+    },
+    // 滚动到指定搜索匹配项
+    scrollToSearchMatch: (matchIndex: number) => {
+      const textLayer = document.getElementById('pdf-text-layer');
+      if (!textLayer) return;
+      const marks = textLayer.querySelectorAll('mark.search-match');
+      if (marks && marks.length > matchIndex) {
+        const mark = marks[matchIndex] as HTMLElement;
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        mark.classList.add('search-match-active');
+        setTimeout(() => {
+          mark.classList.remove('search-match-active');
+        }, 2000);
       }
     },
   }));
@@ -187,6 +204,43 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
           textLayerDiv.style.overflow = 'hidden';
           textLayerDiv.style.opacity = '0.3';
           textLayerDiv.style.lineHeight = '1.0';
+
+          // 搜索关键词高亮
+          if (searchQuery?.trim()) {
+            const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedQuery, 'gi');
+            const walker = textLayerDiv.ownerDocument.createTreeWalker(
+              textLayerDiv,
+              NodeFilter.SHOW_TEXT,
+              null
+            );
+            const textNodes: Text[] = [];
+            while (walker.nextNode()) {
+              textNodes.push(walker.currentNode as Text);
+            }
+            for (const node of textNodes) {
+              const text = node.textContent || '';
+              if (!regex.test(text)) continue;
+              regex.lastIndex = 0;
+              const frag = textLayerDiv.ownerDocument.createDocumentFragment();
+              let lastIdx = 0;
+              let match: RegExpExecArray | null;
+              while ((match = regex.exec(text)) !== null) {
+                if (match.index > lastIdx) {
+                  frag.appendChild(textLayerDiv.ownerDocument.createTextNode(text.slice(lastIdx, match.index)));
+                }
+                const mark = textLayerDiv.ownerDocument.createElement('mark');
+                mark.className = 'search-match';
+                mark.textContent = match[0];
+                frag.appendChild(mark);
+                lastIdx = regex.lastIndex;
+              }
+              if (lastIdx < text.length) {
+                frag.appendChild(textLayerDiv.ownerDocument.createTextNode(text.slice(lastIdx)));
+              }
+              node.parentNode?.replaceChild(frag, node);
+            }
+          }
         }
 
         // 渲染高亮标注
@@ -289,6 +343,19 @@ const PdfReader = forwardRef<PdfReaderRef, PdfReaderProps>(function PdfReader({
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [onTextSelected]);
+
+  // 监听进度条拖拽跳转事件
+  useEffect(() => {
+    function handleSeek(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail.progress !== 'number' || totalPages === 0) return;
+      const targetPage = Math.max(1, Math.min(totalPages, Math.round((detail.progress / 100) * totalPages)));
+      setCurrentPage(targetPage);
+    }
+
+    window.addEventListener('reader-seek', handleSeek);
+    return () => window.removeEventListener('reader-seek', handleSeek);
+  }, [totalPages]);
 
   // Ctrl + 滚轮缩放（阻止浏览器默认缩放）
   useEffect(() => {

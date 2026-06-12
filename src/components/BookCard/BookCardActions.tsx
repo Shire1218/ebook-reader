@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, Pencil, Trash2, X } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { MoreVertical, Pencil, Trash2, X, Tag } from 'lucide-react';
 import { useBookStore } from '@/stores/bookStore';
 import type { Book } from '@/types';
 
@@ -10,17 +10,27 @@ interface BookCardActionsProps {
 }
 
 /**
- * 书籍操作组件：包含更多菜单、重命名弹窗、删除确认弹窗
- * 用于 BookCardGrid 和 BookCardList 共享
+ * 书籍操作组件：包含更多菜单、重命名弹窗、删除确认弹窗、分类编辑
  */
 export default function BookCardActions({ book, buttonClassName = '' }: BookCardActionsProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showCategory, setShowCategory] = useState(false);
   const [newTitle, setNewTitle] = useState(book.title);
+  const [newCategory, setNewCategory] = useState(book.category);
   const menuRef = useRef<HTMLDivElement>(null);
   const removeBook = useBookStore((s) => s.removeBook);
   const updateBook = useBookStore((s) => s.updateBook);
+  const books = useBookStore((s) => s.books);
+  // 用 useMemo 缓存分类列表，避免每次渲染返回新引用导致无限循环
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const b of books) {
+      if (b.category) set.add(b.category);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }, [books]);
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -34,12 +44,13 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showMenu]);
 
-  // 打开重命名弹窗时初始化书名
   useEffect(() => {
-    if (showRename) {
-      setNewTitle(book.title);
-    }
+    if (showRename) setNewTitle(book.title);
   }, [showRename, book.title]);
+
+  useEffect(() => {
+    if (showCategory) setNewCategory(book.category);
+  }, [showCategory, book.category]);
 
   const handleRename = () => {
     const trimmed = newTitle.trim();
@@ -47,6 +58,14 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
       updateBook({ ...book, title: trimmed });
     }
     setShowRename(false);
+  };
+
+  const handleSetCategory = () => {
+    const trimmed = newCategory.trim();
+    if (trimmed !== book.category) {
+      updateBook({ ...book, category: trimmed });
+    }
+    setShowCategory(false);
   };
 
   const handleDelete = () => {
@@ -86,6 +105,17 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
               onClick={(e) => {
                 e.stopPropagation();
                 setShowMenu(false);
+                setShowCategory(true);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-warm-700 hover:bg-warm-50 transition-colors"
+            >
+              <Tag className="w-3.5 h-3.5" />
+              分类
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(false);
                 setShowDelete(true);
               }}
               className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -107,7 +137,7 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
           }}
         >
           <div
-            className="bg-white rounded-xl p-6 w-80 shadow-xl"
+            className="bg-white rounded-xl p-6 w-80 shadow-xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -146,6 +176,82 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
         </div>
       )}
 
+      {/* 分类编辑弹窗 */}
+      {showCategory && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowCategory(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-xl p-6 w-80 shadow-xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium text-warm-800">设置分类</h3>
+              <button onClick={() => setShowCategory(false)} className="p-1 hover:opacity-70">
+                <X className="w-4 h-4 text-warm-400" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSetCategory();
+                if (e.key === 'Escape') setShowCategory(false);
+              }}
+              placeholder="输入分类名称..."
+              className="w-full px-3 py-2 border border-warm-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-warm-400 focus:border-transparent mb-3"
+              autoFocus
+            />
+            {/* 已有分类快捷选择 */}
+            {categories.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setNewCategory(cat)}
+                    className={`px-2.5 py-1 text-xs rounded-full transition-all ${
+                      newCategory === cat
+                        ? 'bg-warm-400 text-white'
+                        : 'text-warm-400 hover:bg-warm-100 border border-warm-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setNewCategory('');
+                  handleSetCategory();
+                }}
+                className="px-4 py-2 text-sm text-warm-500 hover:bg-warm-50 rounded-lg transition-colors"
+              >
+                清除
+              </button>
+              <button
+                onClick={() => setShowCategory(false)}
+                className="px-4 py-2 text-sm text-warm-500 hover:bg-warm-50 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSetCategory}
+                className="px-4 py-2 text-sm bg-warm-400 text-white rounded-lg hover:bg-warm-500 transition-colors"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 删除确认弹窗 */}
       {showDelete && (
         <div
@@ -156,7 +262,7 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
           }}
         >
           <div
-            className="bg-white rounded-xl p-6 w-80 shadow-xl"
+            className="bg-white rounded-xl p-6 w-80 shadow-xl animate-scale-in"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-medium text-warm-800 mb-2">确认删除</h3>

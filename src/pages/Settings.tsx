@@ -57,6 +57,9 @@ export default function Settings() {
                 { label: '系统默认', value: 'system-ui, sans-serif' },
                 { label: '思源宋体', value: '"Noto Serif SC", serif' },
                 { label: '等宽字体', value: 'ui-monospace, monospace' },
+                { label: '楷体', value: 'KaiTi, "楷体", STKaiti, serif' },
+                { label: '仿宋', value: 'FangSong, "仿宋", STFangsong, serif' },
+                { label: '黑体', value: 'SimHei, "黑体", "Microsoft YaHei", sans-serif' },
               ].map((font) => (
                 <button
                   key={font.value}
@@ -174,6 +177,13 @@ export default function Settings() {
                   { keys: ['→'], desc: '下一页 / 下一章' },
                   { keys: ['PageUp'], desc: '向上翻屏' },
                   { keys: ['PageDown'], desc: '向下翻屏' },
+                  { keys: ['T'], desc: '切换目录面板' },
+                  { keys: ['B'], desc: '添加/切换书签' },
+                  { keys: ['N'], desc: '切换标注笔记面板' },
+                  { keys: ['S'], desc: '切换设置面板' },
+                  { keys: ['Ctrl', 'F'], desc: '全文搜索' },
+                  { keys: ['Esc'], desc: '关闭当前面板' },
+                  { keys: ['?'], desc: '显示快捷键帮助' },
                 ].map((item) => (
                   <div key={item.keys[0]} className="flex items-center justify-between py-1.5">
                     <span className="text-sm text-warm-500">{item.desc}</span>
@@ -246,7 +256,7 @@ export default function Settings() {
             </div>
             <div className="flex justify-between">
               <span>版本</span>
-              <span className="text-warm-600">v0.1.0 (P0)</span>
+              <span className="text-warm-600">v0.4.0 (P4)</span>
             </div>
             <div className="flex justify-between">
               <span>技术栈</span>

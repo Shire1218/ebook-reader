@@ -6,6 +6,7 @@ import { getBookFile, arrayBufferToBlobUrl } from '@/utils/db';
 export interface EpubReaderRef {
   goToChapter: (href: string) => void;
   goToLocation: (location: string) => void;
+  scrollToSearchMatch: (matchIndex: number) => void;
 }
 
 interface EpubReaderProps {
@@ -19,6 +20,7 @@ interface EpubReaderProps {
   highlights: Highlight[];
   onTextSelected: (selection: { text: string; cfiRange: string; position: { x: number; y: number } }) => void;
   onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
+  searchQuery?: string;
 }
 
 // 主题颜色映射
@@ -40,6 +42,7 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
   highlights,
   onTextSelected,
   onHighlightClick,
+  searchQuery,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const epubBookRef = useRef<EpubBook | null>(null);
@@ -59,6 +62,21 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
     },
     goToLocation: (location: string) => {
       renditionRef.current?.display(location);
+    },
+    // 滚动到指定搜索匹配项（在 iframe 内）
+    scrollToSearchMatch: (matchIndex: number) => {
+      const iframe = containerRef.current?.querySelector('iframe');
+      const doc = iframe?.contentDocument;
+      if (!doc) return;
+      const marks = doc.querySelectorAll('mark.search-match');
+      if (marks && marks.length > matchIndex) {
+        const mark = marks[matchIndex] as HTMLElement;
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        mark.classList.add('search-match-active');
+        setTimeout(() => {
+          mark.classList.remove('search-match-active');
+        }, 2000);
+      }
     },
   }));
 
@@ -256,6 +274,74 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goNext, goPrev]);
+
+  // 在 iframe 内容中高亮搜索关键词
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+
+    function highlightSearchInIframe() {
+      const iframe = containerRef.current?.querySelector('iframe');
+      const doc = iframe?.contentDocument;
+      if (!doc || !doc.body) return;
+
+      // 先清除旧的搜索高亮
+      const oldMarks = doc.querySelectorAll('mark.search-match');
+      oldMarks.forEach((mark) => {
+        const parent = mark.parentNode;
+        if (parent) {
+          parent.replaceChild(doc.createTextNode(mark.textContent || ''), mark);
+          parent.normalize();
+        }
+      });
+
+      if (!searchQuery?.trim()) return;
+
+      // 在文本节点中查找并高亮搜索关键词
+      const escapedQuery = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escapedQuery, 'gi');
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+      const textNodes: Text[] = [];
+      while (walker.nextNode()) {
+        textNodes.push(walker.currentNode as Text);
+      }
+
+      for (const node of textNodes) {
+        const text = node.textContent || '';
+        if (!regex.test(text)) continue;
+        regex.lastIndex = 0;
+
+        const frag = doc.createDocumentFragment();
+        let lastIdx = 0;
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(text)) !== null) {
+          if (match.index > lastIdx) {
+            frag.appendChild(doc.createTextNode(text.slice(lastIdx, match.index)));
+          }
+          const mark = doc.createElement('mark');
+          mark.className = 'search-match';
+          mark.textContent = match[0];
+          frag.appendChild(mark);
+          lastIdx = regex.lastIndex;
+        }
+        if (lastIdx < text.length) {
+          frag.appendChild(doc.createTextNode(text.slice(lastIdx)));
+        }
+        node.parentNode?.replaceChild(frag, node);
+      }
+    }
+
+    // 页面渲染后高亮
+    rendition.on('rendered', highlightSearchInIframe);
+    // searchQuery 变化时也高亮当前页
+    if (searchQuery?.trim()) {
+      setTimeout(highlightSearchInIframe, 100);
+    }
+
+    return () => {
+      rendition.off('rendered', highlightSearchInIframe);
+    };
+  }, [searchQuery]);
 
   return (
     <div className="flex-1 min-h-0 relative">

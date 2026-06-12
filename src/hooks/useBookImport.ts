@@ -3,7 +3,7 @@ import { useBookStore } from '@/stores/bookStore';
 import { parseFileToBook, isSupportedFormat } from '@/utils/fileParser';
 import { saveBookFile } from '@/utils/db';
 
-const ACCEPTED_FORMATS = '.epub,.pdf,.txt';
+const ACCEPTED_FORMATS = '.epub,.pdf,.txt,.mobi';
 
 export function useBookImport() {
   const addBook = useBookStore((s) => s.addBook);

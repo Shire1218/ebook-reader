@@ -13,7 +13,7 @@ function extractTitle(filename: string): string {
 // 获取文件格式
 function getFormat(filename: string): BookFormat {
   const ext = filename.split('.').pop()?.toLowerCase();
-  if (ext === 'epub' || ext === 'pdf' || ext === 'txt') {
+  if (ext === 'epub' || ext === 'pdf' || ext === 'txt' || ext === 'mobi') {
     return ext;
   }
   return 'txt';
@@ -46,6 +46,7 @@ export function parseFileToBook(file: File): Book {
     currentChapter: '',
     lastReadTime: Date.now(),
     importTime: Date.now(),
+    category: '',
   };
 }
 
@@ -73,5 +74,5 @@ export function formatTime(timestamp: number): string {
 // 验证文件格式是否支持
 export function isSupportedFormat(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase();
-  return ['epub', 'pdf', 'txt'].includes(ext || '');
+  return ['epub', 'pdf', 'txt', 'mobi'].includes(ext || '');
 }

@@ -250,3 +250,23 @@ function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+
+// 将纯文本段落转为带搜索关键词高亮的 HTML
+export function textToHtmlWithSearch(text: string, query: string): string {
+  if (!query.trim()) return textToHtml(text);
+  const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  // 先对搜索词做 HTML 转义，再转义正则特殊字符
+  const escapedHtml = escapeHtml(query);
+  const escapedRegex = escapedHtml.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedRegex})`, 'gi');
+
+  return paragraphs
+    .map((p) => {
+      const contentHtml = escapeHtml(p.trim()).replace(
+        regex,
+        '<mark class="search-match">$1</mark>'
+      );
+      return `<p style="text-indent:2em;margin:0.8em 0;">${contentHtml}</p>`;
+    })
+    .join('');
+}

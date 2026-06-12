@@ -1,5 +1,5 @@
 // 书籍格式
-export type BookFormat = 'epub' | 'pdf' | 'txt';
+export type BookFormat = 'epub' | 'pdf' | 'txt' | 'mobi';
 
 // 主题类型
 export type ThemeType = 'light' | 'dark' | 'sepia' | 'green';
@@ -23,6 +23,7 @@ export interface Book {
   currentChapter: string;
   lastReadTime: number;
   importTime: number;
+  category: string;             // 书籍分类
 }
 
 // 阅读偏好

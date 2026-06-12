@@ -64,7 +64,7 @@ export default function DropZone({ children }: DropZoneProps) {
           <div className="flex flex-col items-center gap-3 text-warm-600">
             <Upload className="w-12 h-12 animate-bounce" />
             <p className="text-lg font-medium">释放以导入书籍</p>
-            <p className="text-sm text-warm-400">支持 EPUB、PDF、TXT 格式</p>
+            <p className="text-sm text-warm-400">支持 EPUB、PDF、TXT、MOBI 格式</p>
           </div>
         </div>
       )}

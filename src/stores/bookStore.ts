@@ -7,6 +7,7 @@ interface BookState {
   isLoading: boolean;
   searchQuery: string;
   sortBy: SortBy;
+  categoryFilter: string;     // 当前分类筛选（空字符串表示全部）
 
   // 操作
   loadBooks: () => Promise<void>;
@@ -15,7 +16,9 @@ interface BookState {
   removeBook: (id: string) => Promise<void>;
   setSearchQuery: (query: string) => void;
   setSortBy: (sortBy: SortBy) => void;
+  setCategoryFilter: (category: string) => void;
   getFilteredBooks: () => Book[];
+  getCategories: () => string[];
 }
 
 export const useBookStore = create<BookState>((set, get) => ({
@@ -23,6 +26,7 @@ export const useBookStore = create<BookState>((set, get) => ({
   isLoading: false,
   searchQuery: '',
   sortBy: 'importTime',
+  categoryFilter: '',
 
   loadBooks: async () => {
     set({ isLoading: true });
@@ -59,8 +63,23 @@ export const useBookStore = create<BookState>((set, get) => ({
     set({ sortBy });
   },
 
+  setCategoryFilter: (category: string) => {
+    set({ categoryFilter: category });
+  },
+
+  getCategories: () => {
+    const { books } = get();
+    const categories = new Set<string>();
+    for (const book of books) {
+      if (book.category) {
+        categories.add(book.category);
+      }
+    }
+    return Array.from(categories).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  },
+
   getFilteredBooks: () => {
-    const { books, searchQuery, sortBy } = get();
+    const { books, searchQuery, sortBy, categoryFilter } = get();
 
     let filtered = books;
     if (searchQuery.trim()) {
@@ -68,6 +87,9 @@ export const useBookStore = create<BookState>((set, get) => ({
       filtered = books.filter(
         (b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
       );
+    }
+    if (categoryFilter) {
+      filtered = filtered.filter((b) => b.category === categoryFilter);
     }
 
     return [...filtered].sort((a, b) => {

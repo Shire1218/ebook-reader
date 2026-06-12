@@ -1,15 +1,18 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, List, Settings, Bookmark, BookmarkCheck, X, Highlighter, Trash2, Pencil, Check } from 'lucide-react';
+import { ArrowLeft, List, Settings, Bookmark, BookmarkCheck, X, Highlighter, Trash2, Pencil, Check, Search, Keyboard } from 'lucide-react';
 import { useBookStore } from '@/stores/bookStore';
 import { usePreferenceStore } from '@/stores/preferenceStore';
 import EpubReader from '@/components/Reader/EpubReader';
 import TxtReader from '@/components/Reader/TxtReader';
 import PdfReader from '@/components/Reader/PdfReader';
+import MobiReader from '@/components/Reader/MobiReader';
 import SelectionToolbar from '@/components/Reader/SelectionToolbar';
 import type { EpubReaderRef } from '@/components/Reader/EpubReader';
 import type { TxtReaderRef } from '@/components/Reader/TxtReader';
 import type { PdfReaderRef } from '@/components/Reader/PdfReader';
+import type { MobiReaderRef } from '@/components/Reader/MobiReader';
+import { useKeyboardShortcuts, SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
 import {
   addBookmark,
   getBookmarks,
@@ -24,6 +27,25 @@ import type { Bookmark as BookmarkType, TocItem, Highlight, HighlightColor } fro
 // Toast 消息类型
 type ToastType = 'success' | 'error';
 
+// 字体列表
+const FONT_OPTIONS = [
+  { label: '系统默认', value: 'system-ui, sans-serif' },
+  { label: '思源宋体', value: '"Noto Serif SC", serif' },
+  { label: '等宽字体', value: 'ui-monospace, monospace' },
+  { label: '楷体', value: 'KaiTi, "楷体", STKaiti, serif' },
+  { label: '仿宋', value: 'FangSong, "仿宋", STFangsong, serif' },
+  { label: '黑体', value: 'SimHei, "黑体", "Microsoft YaHei", sans-serif' },
+];
+
+// 搜索结果类型
+interface SearchResult {
+  chapterIndex: number;
+  chapterTitle: string;
+  context: string;
+  matchIndex: number;      // 全局匹配序号
+  matchInChapter: number;  // 章节内匹配序号（用于滚动定位）
+}
+
 export default function Reader() {
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
@@ -34,6 +56,7 @@ export default function Reader() {
   const [showToc, setShowToc] = useState(false);
   const [showBookmarks, setShowBookmarks] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [toc, setToc] = useState<TocItem[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -56,10 +79,22 @@ export default function Reader() {
   const [editNoteText, setEditNoteText] = useState('');
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  // 进度条拖拽状态
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
+  const [displayProgress, setDisplayProgress] = useState<number | null>(null);
+
+  // 全文搜索状态
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeSearchIdx, setActiveSearchIdx] = useState<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // 阅读器 ref
   const epubReaderRef = useRef<EpubReaderRef>(null);
   const txtReaderRef = useRef<TxtReaderRef>(null);
   const pdfReaderRef = useRef<PdfReaderRef>(null);
+  const mobiReaderRef = useRef<MobiReaderRef>(null);
 
   const { fontSize, lineHeight, fontFamily, theme } = usePreferenceStore();
   const setFontSize = usePreferenceStore((s) => s.setFontSize);
@@ -99,6 +134,55 @@ export default function Reader() {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // 关闭所有面板
+  const closeAllPanels = useCallback(() => {
+    setShowSettings(false);
+    setShowToc(false);
+    setShowBookmarks(false);
+    setShowNotes(false);
+    setShowSearch(false);
+  }, []);
+
+  // 快捷键系统
+  const { showShortcuts, setShowShortcuts } = useKeyboardShortcuts({
+    onToggleToc: () => {
+      setShowToc((v) => !v);
+      setShowSettings(false);
+      setShowBookmarks(false);
+      setShowNotes(false);
+      setShowSearch(false);
+    },
+    onToggleBookmarks: () => {
+      setShowBookmarks((v) => !v);
+      setShowToc(false);
+      setShowSettings(false);
+      setShowNotes(false);
+      setShowSearch(false);
+    },
+    onToggleNotes: () => {
+      setShowNotes((v) => !v);
+      setShowToc(false);
+      setShowSettings(false);
+      setShowBookmarks(false);
+      setShowSearch(false);
+    },
+    onToggleSettings: () => {
+      setShowSettings((v) => !v);
+      setShowToc(false);
+      setShowBookmarks(false);
+      setShowNotes(false);
+      setShowSearch(false);
+    },
+    onToggleSearch: () => {
+      setShowSearch((v) => !v);
+      setShowToc(false);
+      setShowSettings(false);
+      setShowBookmarks(false);
+      setShowNotes(false);
+    },
+    onCloseAllPanels: closeAllPanels,
+  });
+
   // 如果书籍数据未加载（如直接通过 URL 访问），自动加载
   useEffect(() => {
     if (books.length === 0) {
@@ -124,6 +208,13 @@ export default function Reader() {
         });
     }
   }, [bookId, showToast]);
+
+  // 搜索面板打开时自动聚焦
+  useEffect(() => {
+    if (showSearch) {
+      setTimeout(() => searchInputRef.current?.focus(), 100);
+    }
+  }, [showSearch]);
 
   // 选中文本工具栏状态
   const [selectionToolbar, setSelectionToolbar] = useState<{
@@ -192,26 +283,23 @@ export default function Reader() {
       } catch (err) {
         console.error('添加批注失败:', err);
         showToast('添加批注失败，请刷新页面重试', 'error');
-        throw err; // 抛出让 SelectionToolbar 知道失败了
+        throw err;
       }
     },
     [book, selectionToolbar, currentLocation, currentChapterName, progress, showToast]
   );
 
-  // 处理高亮点击 - 显示详情弹窗
+  // 处理高亮点击
   const handleHighlightClick = useCallback((highlight: Highlight, position?: { x: number; y: number }) => {
     if (!position) return;
-    // 计算弹窗位置，确保不超出视口
     const popoverWidth = 300;
     const popoverHeight = 280;
     let x = position.x - popoverWidth / 2;
     let y = position.y + 8;
-
     if (x + popoverWidth > window.innerWidth - 16) x = window.innerWidth - popoverWidth - 16;
     if (x < 16) x = 16;
     if (y + popoverHeight > window.innerHeight - 16) y = position.y - popoverHeight - 8;
     if (y < 16) y = 16;
-
     setHighlightPopover({ highlight, position: { x, y } });
     setEditingNote(false);
     setEditNoteText(highlight.note || '');
@@ -239,7 +327,7 @@ export default function Reader() {
     }
   }, [highlightPopover, editNoteText, showToast]);
 
-  // 从弹窗中删除标注
+  // 删除标注
   const handleDeleteFromPopover = useCallback(async () => {
     if (!highlightPopover) return;
     try {
@@ -266,18 +354,15 @@ export default function Reader() {
     }
   }, [showToast]);
 
-  // 点击标注记录定位到文章位置
+  // 点击标注记录定位
   const handleHighlightNavigate = useCallback((highlight: Highlight) => {
     if (book?.format === 'epub') {
-      // EPUB: 使用 CFI range 定位
       epubReaderRef.current?.goToLocation(highlight.location);
     } else if (book?.format === 'txt') {
-      // TXT: 先跳转到对应章节，然后滚动到高亮位置
       try {
         const loc = JSON.parse(highlight.location);
         if (typeof loc.chapter === 'number') {
           txtReaderRef.current?.goToChapter(loc.chapter);
-          // 等待章节渲染完成后滚动到高亮位置
           setTimeout(() => {
             txtReaderRef.current?.scrollToHighlight(highlight.id);
           }, 100);
@@ -286,11 +371,22 @@ export default function Reader() {
         // 解析失败忽略
       }
     } else if (book?.format === 'pdf') {
-      // PDF: 解析位置信息跳转页面
       try {
         const loc = JSON.parse(highlight.location);
         if (typeof loc.page === 'number') {
           pdfReaderRef.current?.goToPage(loc.page);
+        }
+      } catch {
+        // 解析失败忽略
+      }
+    } else if (book?.format === 'mobi') {
+      try {
+        const loc = JSON.parse(highlight.location);
+        if (typeof loc.chapter === 'number') {
+          mobiReaderRef.current?.goToChapter(loc.chapter);
+          setTimeout(() => {
+            mobiReaderRef.current?.scrollToHighlight(highlight.id);
+          }, 100);
         }
       } catch {
         // 解析失败忽略
@@ -306,7 +402,6 @@ export default function Reader() {
         handleClosePopover();
       }
     };
-    // 延迟添加监听，避免当前点击立即触发关闭
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 0);
@@ -335,11 +430,9 @@ export default function Reader() {
         setCurrentChapterName(chapterName);
       }
 
-      // 记录最新值到 ref，用于组件卸载时刷新保存
       pendingLocationRef.current = location;
       pendingProgressRef.current = newProgress;
 
-      // 防抖保存（2秒内只保存一次），使用 bookRef 避免闭包捕获过期 book
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         const latestBook = bookRef.current;
@@ -356,7 +449,7 @@ export default function Reader() {
     [updateBook]
   );
 
-  // 组件卸载时立即刷新保存进度，防止防抖定时器未触发导致进度丢失
+  // 组件卸载时立即刷新保存进度
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -374,7 +467,6 @@ export default function Reader() {
 
   // 目录加载回调
   const handleTocLoaded = useCallback((tocItems: { label: string; href: string }[]) => {
-    // 为每个目录项添加 id
     const items: TocItem[] = tocItems.map((item, idx) => ({
       id: `toc-${idx}`,
       label: item.label,
@@ -389,18 +481,22 @@ export default function Reader() {
       if (book?.format === 'epub') {
         epubReaderRef.current?.goToChapter(item.href);
       } else if (book?.format === 'txt') {
-        // TXT 的 href 格式是 chapter-{index}
         const match = item.href.match(/chapter-(\d+)/);
         if (match) {
           const index = parseInt(match[1]!, 10);
           txtReaderRef.current?.goToChapter(index);
         }
       } else if (book?.format === 'pdf') {
-        // PDF 的 href 格式是 page-{index}
         const match = item.href.match(/page-(\d+)/);
         if (match) {
           const page = parseInt(match[1]!, 10);
           pdfReaderRef.current?.goToPage(page);
+        }
+      } else if (book?.format === 'mobi') {
+        const match = item.href.match(/chapter-(\d+)/);
+        if (match) {
+          const index = parseInt(match[1]!, 10);
+          mobiReaderRef.current?.goToChapter(index);
         }
       }
       setShowToc(false);
@@ -408,19 +504,43 @@ export default function Reader() {
     [book?.format]
   );
 
-  // 进度条拖动
+  // 进度条拖拽开始
+  const handleProgressMouseDown = useCallback(() => {
+    setIsDraggingProgress(true);
+    setDisplayProgress(progress);
+  }, [progress]);
+
+  // 进度条拖拽中
+  const handleProgressInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isDraggingProgress) {
+        setDisplayProgress(Number(e.target.value));
+      }
+    },
+    [isDraggingProgress]
+  );
+
+  // 进度条拖拽结束 - 执行跳转
   const handleProgressChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const newProgress = Number(e.target.value);
       setProgress(newProgress);
+      setDisplayProgress(null);
+      setIsDraggingProgress(false);
 
-      // 根据进度计算位置并跳转
-      if (book?.format === 'epub' && epubReaderRef.current) {
-        // EPUB 需要通过 CFI 跳转，这里简化处理
-        // 实际应该根据 locations 计算对应的 CFI
-      } else if (book?.format === 'txt' && txtReaderRef.current) {
-        // TXT 根据进度计算章节和滚动位置
-        // 这里简化为跳转到对应章节
+      // 根据格式执行跳转
+      if (book?.format === 'txt' && txtReaderRef.current) {
+        // TXT: 根据进度计算目标章节
+        // 通过触发阅读器内部的章节跳转
+        const event = new CustomEvent('reader-seek', { detail: { progress: newProgress } });
+        window.dispatchEvent(event);
+      } else if (book?.format === 'pdf' && pdfReaderRef.current) {
+        // PDF: 通过事件通知跳转
+        const event = new CustomEvent('reader-seek', { detail: { progress: newProgress } });
+        window.dispatchEvent(event);
+      } else if (book?.format === 'mobi' && mobiReaderRef.current) {
+        const event = new CustomEvent('reader-seek', { detail: { progress: newProgress } });
+        window.dispatchEvent(event);
       }
     },
     [book?.format]
@@ -431,14 +551,12 @@ export default function Reader() {
     if (!book || !currentLocation) return;
 
     if (isBookmarked) {
-      // 删除书签
       const bookmark = bookmarks.find((b) => b.location === currentLocation);
       if (bookmark) {
         await deleteBookmark(bookmark.id);
         setBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id));
       }
     } else {
-      // 添加书签
       const newBookmark: BookmarkType = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2),
         bookId: book.id,
@@ -468,6 +586,8 @@ export default function Reader() {
         } catch {
           // 解析失败忽略
         }
+      } else if (book?.format === 'mobi') {
+        mobiReaderRef.current?.goToLocation(bookmark.location);
       }
       setShowBookmarks(false);
     },
@@ -479,6 +599,117 @@ export default function Reader() {
     await deleteBookmark(id);
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
   }, []);
+
+  // 全文搜索 - 基于章节文本直接搜索，不跳转页面
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim() || !book) return;
+    setIsSearching(true);
+    setSearchResults([]);
+    setActiveSearchIdx(-1);
+
+    try {
+      const query = searchQuery.toLowerCase();
+      const results: SearchResult[] = [];
+
+      // 获取章节文本：TXT/MOBI 通过 ref，EPUB/PDF 通过目录
+      let chaptersText: string[] = [];
+      if ((book.format === 'txt' && txtReaderRef.current) || (book.format === 'mobi' && mobiReaderRef.current)) {
+        chaptersText = book.format === 'txt'
+          ? txtReaderRef.current!.getChaptersText()
+          : mobiReaderRef.current!.getChaptersText();
+      }
+
+      // 逐章搜索
+      for (let i = 0; i < toc.length; i++) {
+        const item = toc[i]!;
+        let text = '';
+
+        if (chaptersText.length > i) {
+          text = chaptersText[i] || '';
+        }
+
+        if (!text) continue;
+
+        const lowerText = text.toLowerCase();
+        let startIdx = 0;
+        let matchInChapter = 0;
+        while (startIdx < lowerText.length) {
+          const matchIdx = lowerText.indexOf(query, startIdx);
+          if (matchIdx === -1) break;
+
+          // 提取上下文
+          const ctxStart = Math.max(0, matchIdx - 30);
+          const ctxEnd = Math.min(text.length, matchIdx + query.length + 30);
+          const context = (ctxStart > 0 ? '...' : '') +
+            text.slice(ctxStart, matchIdx) +
+            '【' + text.slice(matchIdx, matchIdx + query.length) + '】' +
+            text.slice(matchIdx + query.length, ctxEnd) +
+            (ctxEnd < text.length ? '...' : '');
+
+          results.push({
+            chapterIndex: i,
+            chapterTitle: item.label,
+            context,
+            matchIndex: results.length,
+            matchInChapter,
+          });
+          matchInChapter++;
+          startIdx = matchIdx + 1;
+
+          if (results.length >= 100) break;
+        }
+
+        if (results.length >= 100) break;
+      }
+
+      setSearchResults(results);
+    } catch (err) {
+      console.error('搜索失败:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [searchQuery, book, toc]);
+
+  // 搜索结果点击跳转 - 不关闭搜索面板
+  const handleSearchResultClick = useCallback(
+    (result: SearchResult, idx: number) => {
+      setActiveSearchIdx(idx);
+
+      // 跳转到对应章节
+      if (book?.format === 'txt') {
+        txtReaderRef.current?.goToChapter(result.chapterIndex);
+        // 等待渲染后滚动到匹配位置
+        setTimeout(() => {
+          txtReaderRef.current?.scrollToSearchMatch(result.matchInChapter);
+        }, 150);
+      } else if (book?.format === 'mobi') {
+        mobiReaderRef.current?.goToChapter(result.chapterIndex);
+        setTimeout(() => {
+          mobiReaderRef.current?.scrollToSearchMatch(result.matchInChapter);
+        }, 150);
+      } else if (book?.format === 'epub') {
+        const item = toc[result.chapterIndex];
+        if (item) {
+          epubReaderRef.current?.goToChapter(item.href);
+          setTimeout(() => {
+            epubReaderRef.current?.scrollToSearchMatch(result.matchInChapter);
+          }, 300);
+        }
+      } else if (book?.format === 'pdf') {
+        const item = toc[result.chapterIndex];
+        if (item) {
+          const match = item.href.match(/page-(\d+)/);
+          if (match) {
+            pdfReaderRef.current?.goToPage(parseInt(match[1]!, 10));
+            setTimeout(() => {
+              pdfReaderRef.current?.scrollToSearchMatch(result.matchInChapter);
+            }, 300);
+          }
+        }
+      }
+    },
+    [book?.format, toc]
+  );
 
   if (!book) {
     return (
@@ -496,6 +727,8 @@ export default function Reader() {
     );
   }
 
+  const currentProgress = isDraggingProgress ? displayProgress ?? progress : progress;
+
   return (
     <div className={`flex-1 flex flex-col h-full theme-transition ${themeBg[theme] || themeBg.light}`}>
       {/* 顶部工具栏 */}
@@ -511,11 +744,32 @@ export default function Reader() {
         <h1 className="font-serif text-sm font-medium truncate max-w-xs">{book.title}</h1>
 
         <div className="flex items-center gap-1">
+          {/* 搜索按钮 */}
+          <button
+            onClick={() => {
+              setShowSearch(!showSearch);
+              setShowToc(false);
+              setShowSettings(false);
+              setShowBookmarks(false);
+              setShowNotes(false);
+            }}
+            className={`p-2 rounded-lg transition-colors ${showSearch ? 'bg-black/10' : 'hover:bg-black/5'}`}
+            title="全文搜索 (Ctrl+F)"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
           {/* 标注笔记按钮 */}
           <button
-            onClick={() => setShowNotes(!showNotes)}
+            onClick={() => {
+              setShowNotes(!showNotes);
+              setShowToc(false);
+              setShowSettings(false);
+              setShowBookmarks(false);
+              setShowSearch(false);
+            }}
             className={`p-2 rounded-lg transition-colors relative ${showNotes ? 'bg-black/10' : 'hover:bg-black/5'}`}
-            title="标注笔记"
+            title="标注笔记 (N)"
           >
             <Highlighter className="w-4 h-4" />
             {highlights.length > 0 && (
@@ -531,7 +785,7 @@ export default function Reader() {
             className={`p-2 rounded-lg transition-colors ${
               isBookmarked ? 'text-warm-400 bg-warm-400/10' : 'hover:bg-black/5'
             }`}
-            title={isBookmarked ? '取消书签' : '添加书签'}
+            title="添加/取消书签 (B)"
           >
             {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
           </button>
@@ -539,7 +793,13 @@ export default function Reader() {
           {/* 书签列表按钮 */}
           {bookmarks.length > 0 && (
             <button
-              onClick={() => setShowBookmarks(!showBookmarks)}
+              onClick={() => {
+                setShowBookmarks(!showBookmarks);
+                setShowToc(false);
+                setShowSettings(false);
+                setShowNotes(false);
+                setShowSearch(false);
+              }}
               className={`p-2 rounded-lg transition-colors ${showBookmarks ? 'bg-black/10' : 'hover:bg-black/5'}`}
               title="书签列表"
             >
@@ -550,8 +810,15 @@ export default function Reader() {
           {/* 目录按钮 */}
           {toc.length > 0 && (
             <button
-              onClick={() => setShowToc(!showToc)}
+              onClick={() => {
+                setShowToc(!showToc);
+                setShowSettings(false);
+                setShowBookmarks(false);
+                setShowNotes(false);
+                setShowSearch(false);
+              }}
               className={`p-2 rounded-lg transition-colors ${showToc ? 'bg-black/10' : 'hover:bg-black/5'}`}
+              title="目录 (T)"
             >
               <List className="w-4 h-4" />
             </button>
@@ -559,19 +826,102 @@ export default function Reader() {
 
           {/* 设置按钮 */}
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => {
+              setShowSettings(!showSettings);
+              setShowToc(false);
+              setShowBookmarks(false);
+              setShowNotes(false);
+              setShowSearch(false);
+            }}
             className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-black/10' : 'hover:bg-black/5'}`}
+            title="设置 (S)"
           >
             <Settings className="w-4 h-4" />
+          </button>
+
+          {/* 快捷键帮助按钮 */}
+          <button
+            onClick={() => setShowShortcuts(!showShortcuts)}
+            className={`p-2 rounded-lg transition-colors ${showShortcuts ? 'bg-black/10' : 'hover:bg-black/5'}`}
+            title="快捷键帮助 (?)"
+          >
+            <Keyboard className="w-4 h-4" />
           </button>
         </div>
       </header>
 
       {/* 主内容区 */}
       <div className="flex-1 min-h-0 flex overflow-hidden relative">
+        {/* 搜索面板 */}
+        {showSearch && (
+          <aside className="w-80 border-r border-black/5 bg-black/5 p-4 flex flex-col flex-shrink-0 animate-slide-in">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium opacity-70">全文搜索</h3>
+              <button onClick={() => setShowSearch(false)} className="p-1 hover:opacity-70">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex gap-2 mb-3">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSearch();
+                  if (e.key === 'Escape') setShowSearch(false);
+                }}
+                placeholder="输入搜索关键词..."
+                className="flex-1 px-3 py-2 text-sm bg-white/50 border border-black/10 rounded-lg
+                           focus:outline-none focus:ring-2 focus:ring-warm-400/30"
+              />
+              <button
+                onClick={handleSearch}
+                disabled={isSearching || !searchQuery.trim()}
+                className="px-3 py-2 text-sm bg-warm-400 text-white rounded-lg hover:bg-warm-500
+                           disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                搜索
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              {isSearching && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-5 h-5 border-2 border-warm-200 border-t-warm-400 rounded-full animate-spin" />
+                  <span className="ml-2 text-xs text-warm-400">搜索中...</span>
+                </div>
+              )}
+              {!isSearching && searchResults.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-warm-400 mb-2">
+                    找到 {searchResults.length} 个结果
+                  </p>
+                  {searchResults.map((result, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                        activeSearchIdx === idx
+                          ? 'bg-warm-400/15 ring-1 ring-warm-400/30'
+                          : 'hover:bg-black/5'
+                      }`}
+                      onClick={() => handleSearchResultClick(result, idx)}
+                    >
+                      <p className="text-xs font-medium opacity-60 mb-1">{result.chapterTitle}</p>
+                      <p className="text-xs opacity-80 leading-relaxed break-all">{result.context}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {!isSearching && searchQuery && searchResults.length === 0 && (
+                <p className="text-xs text-warm-400 text-center py-8">未找到匹配结果</p>
+              )}
+            </div>
+          </aside>
+        )}
+
         {/* 书签列表面板 */}
         {showBookmarks && (
-          <aside className="w-64 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0">
+          <aside className="w-64 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0 animate-slide-in">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium opacity-70">书签</h3>
               <button onClick={() => setShowBookmarks(false)} className="p-1 hover:opacity-70">
@@ -607,7 +957,7 @@ export default function Reader() {
 
         {/* 标注笔记面板 */}
         {showNotes && (
-          <aside className="w-72 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0">
+          <aside className="w-72 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0 animate-slide-in">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium opacity-70">标注笔记</h3>
               <button onClick={() => setShowNotes(false)} className="p-1 hover:opacity-70">
@@ -631,22 +981,17 @@ export default function Reader() {
                       className="p-3 rounded-lg bg-white/50 border border-black/5 group cursor-pointer hover:shadow-md transition-shadow"
                       onClick={() => handleHighlightNavigate(highlight)}
                     >
-                      {/* 高亮文本 */}
                       <div
                         className="text-xs mb-2 p-2 rounded"
                         style={{ backgroundColor: colors.bg }}
                       >
                         "{highlight.text}"
                       </div>
-
-                      {/* 批注 */}
                       {highlight.note && (
                         <div className="text-xs text-warm-600 mb-2 pl-2 border-l-2 border-warm-300">
                           {highlight.note}
                         </div>
                       )}
-
-                      {/* 元信息 */}
                       <div className="flex items-center justify-between text-xs opacity-50">
                         <span className="truncate">{highlight.chapter}</span>
                         <button
@@ -670,7 +1015,7 @@ export default function Reader() {
 
         {/* 目录面板 */}
         {showToc && (
-          <aside className="w-64 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0">
+          <aside className="w-64 border-r border-black/5 bg-black/5 p-4 overflow-auto flex-shrink-0 animate-slide-in">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium opacity-70">目录</h3>
               <button onClick={() => setShowToc(false)} className="p-1 hover:opacity-70">
@@ -707,6 +1052,7 @@ export default function Reader() {
               highlights={highlights}
               onTextSelected={handleTextSelected}
               onHighlightClick={handleHighlightClick}
+              searchQuery={showSearch ? searchQuery : ''}
             />
           ) : book.format === 'pdf' ? (
             <PdfReader
@@ -718,6 +1064,22 @@ export default function Reader() {
               highlights={highlights}
               onTextSelected={handleTextSelected}
               onHighlightClick={handleHighlightClick}
+              searchQuery={showSearch ? searchQuery : ''}
+            />
+          ) : book.format === 'mobi' ? (
+            <MobiReader
+              ref={mobiReaderRef}
+              book={book}
+              fontSize={fontSize}
+              lineHeight={lineHeight}
+              fontFamily={fontFamily}
+              theme={theme}
+              onLocationChange={handleLocationChange}
+              onTocLoaded={handleTocLoaded}
+              highlights={highlights}
+              onTextSelected={handleTextSelected}
+              onHighlightClick={handleHighlightClick}
+              searchQuery={showSearch ? searchQuery : ''}
             />
           ) : (
             <TxtReader
@@ -732,13 +1094,14 @@ export default function Reader() {
               highlights={highlights}
               onTextSelected={handleTextSelected}
               onHighlightClick={handleHighlightClick}
+              searchQuery={showSearch ? searchQuery : ''}
             />
           )}
         </div>
 
         {/* 设置面板 */}
         {showSettings && (
-          <aside className="w-72 border-l border-black/5 bg-black/5 p-5 overflow-auto flex-shrink-0">
+          <aside className="w-72 border-l border-black/5 bg-black/5 p-5 overflow-auto flex-shrink-0 animate-slide-in-right">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-sm font-medium opacity-70">阅读设置</h3>
               <button onClick={() => setShowSettings(false)} className="p-1 hover:opacity-70">
@@ -750,10 +1113,7 @@ export default function Reader() {
             <div className="mb-5">
               <label className="text-xs opacity-50 mb-2 block">字体</label>
               <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: '系统默认', value: 'system-ui' },
-                  { label: '思源宋体', value: '"Noto Serif SC", serif' },
-                ].map((font) => (
+                {FONT_OPTIONS.map((font) => (
                   <button
                     key={font.value}
                     onClick={() => setFontFamily(font.value)}
@@ -840,15 +1200,22 @@ export default function Reader() {
       {/* 底部进度栏 */}
       <footer className="h-12 flex items-center px-6 bg-black/5 border-t border-black/5 flex-shrink-0">
         <div className="flex items-center gap-4 flex-1">
-          <span className="text-xs opacity-50 tabular-nums w-12">{Math.round(progress)}%</span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={progress}
-            onChange={handleProgressChange}
-            className="flex-1 accent-warm-400"
-          />
+          <span className="text-xs opacity-50 tabular-nums w-12">{Math.round(currentProgress)}%</span>
+          <div className="flex-1 relative flex items-center">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={currentProgress}
+              onMouseDown={handleProgressMouseDown}
+              onInput={handleProgressInput}
+              onChange={handleProgressChange}
+              className="flex-1 accent-warm-400 cursor-pointer"
+            />
+          </div>
+          <span className="text-xs opacity-50 tabular-nums w-12 text-right">
+            {currentChapterName ? currentChapterName.slice(0, 8) : ''}
+          </span>
         </div>
       </footer>
 
@@ -872,14 +1239,11 @@ export default function Reader() {
             top: `${highlightPopover.position.y}px`,
           }}
         >
-          {/* 高亮颜色条 */}
           <div
             className="h-1"
             style={{ backgroundColor: highlightColorMap[highlightPopover.highlight.color].border }}
           />
-
           <div className="p-4 space-y-3">
-            {/* 高亮文本 */}
             <div
               className="text-sm text-warm-700 rounded-lg p-3 max-h-20 overflow-auto leading-relaxed border-l-3"
               style={{
@@ -890,7 +1254,6 @@ export default function Reader() {
               "{highlightPopover.highlight.text}"
             </div>
 
-            {/* 批注内容 / 编辑模式 */}
             {editingNote ? (
               <div className="space-y-2">
                 <textarea
@@ -926,7 +1289,6 @@ export default function Reader() {
               </div>
             ) : null}
 
-            {/* 操作按钮 */}
             <div className="flex items-center justify-between pt-1 border-t border-black/5">
               <span className="text-xs text-warm-400 truncate mr-2">
                 {highlightPopover.highlight.chapter}
@@ -949,6 +1311,64 @@ export default function Reader() {
                 >
                   <Trash2 className="w-3.5 h-3.5 text-warm-400 hover:text-red-500" />
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 快捷键帮助弹窗 */}
+      {showShortcuts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setShowShortcuts(false)}>
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-black/10 w-[480px] max-h-[80vh] overflow-auto animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-5 border-b border-black/5">
+              <div className="flex items-center gap-2">
+                <Keyboard className="w-5 h-5 text-warm-400" />
+                <h3 className="font-medium text-warm-800">快捷键</h3>
+              </div>
+              <button onClick={() => setShowShortcuts(false)} className="p-1 hover:opacity-70">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-5">
+              {/* 阅读器快捷键 */}
+              <div>
+                <h4 className="text-xs font-medium text-warm-600 mb-3">阅读器</h4>
+                <div className="space-y-2">
+                  {SHORTCUTS.filter((s) => s.category === 'reader').map((shortcut, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-1">
+                      <span className="text-sm text-warm-500">{shortcut.description}</span>
+                      <div className="flex items-center gap-1">
+                        {shortcut.ctrl && <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">Ctrl</kbd>}
+                        {shortcut.shift && <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">Shift</kbd>}
+                        {shortcut.alt && <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">Alt</kbd>}
+                        <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">
+                          {shortcut.key === ' ' ? 'Space' : shortcut.key}
+                        </kbd>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* 通用快捷键 */}
+              <div>
+                <h4 className="text-xs font-medium text-warm-600 mb-3">通用</h4>
+                <div className="space-y-2">
+                  {SHORTCUTS.filter((s) => s.category === 'general').map((shortcut, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-1">
+                      <span className="text-sm text-warm-500">{shortcut.description}</span>
+                      <div className="flex items-center gap-1">
+                        {shortcut.shift && <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">Shift</kbd>}
+                        <kbd className="px-1.5 py-0.5 text-xs font-mono bg-warm-100 border border-warm-200 rounded text-warm-600">
+                          {shortcut.key}
+                        </kbd>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

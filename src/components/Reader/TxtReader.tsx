@@ -1,13 +1,15 @@
 import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import type { Book, Highlight, HighlightColor } from '@/types';
 import { getBookFile } from '@/utils/db';
-import { decodeTxtBuffer, splitIntoChapters, textToHtml, textToHtmlWithHighlights } from '@/utils/txtParser';
+import { decodeTxtBuffer, splitIntoChapters, textToHtml, textToHtmlWithHighlights, textToHtmlWithSearch } from '@/utils/txtParser';
 import type { TxtChapter } from '@/utils/txtParser';
 
 export interface TxtReaderRef {
   goToChapter: (index: number) => void;
   goToLocation: (location: string) => void;
   scrollToHighlight: (highlightId: string) => void;
+  getChaptersText: () => string[];
+  scrollToSearchMatch: (matchIndex: number) => void;
 }
 
 interface TxtReaderProps {
@@ -21,6 +23,7 @@ interface TxtReaderProps {
   highlights: Highlight[];
   onTextSelected: (selection: { text: string; position: { x: number; y: number } }) => void;
   onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
+  searchQuery?: string;
 }
 
 // 主题颜色映射
@@ -42,6 +45,7 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
   highlights,
   onTextSelected,
   onHighlightClick,
+  searchQuery,
 }, ref) {
   const [chapters, setChapters] = useState<TxtChapter[]>([]);
   const [chapterIndex, setChapterIndex] = useState(0);
@@ -78,6 +82,23 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
         setTimeout(() => {
           el.style.boxShadow = originalBoxShadow;
         }, 1500);
+      }
+    },
+    // 获取所有章节文本（用于搜索索引）
+    getChaptersText: () => {
+      return chapters.map((ch) => ch.content);
+    },
+    // 滚动到指定搜索匹配项
+    scrollToSearchMatch: (matchIndex: number) => {
+      const marks = containerRef.current?.querySelectorAll('mark.search-match');
+      if (marks && marks.length > matchIndex) {
+        const mark = marks[matchIndex] as HTMLElement;
+        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 闪烁效果
+        mark.classList.add('search-match-active');
+        setTimeout(() => {
+          mark.classList.remove('search-match-active');
+        }, 2000);
       }
     },
   }));
@@ -263,6 +284,45 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [onTextSelected]);
 
+  // 监听进度条拖拽跳转事件
+  useEffect(() => {
+    function handleSeek(e: Event) {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail.progress !== 'number' || chapters.length === 0) return;
+
+      const targetProgress = detail.progress;
+      const totalChars = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
+      const targetChars = (targetProgress / 100) * totalChars;
+
+      // 找到目标章节
+      let accChars = 0;
+      for (let i = 0; i < chapters.length; i++) {
+        const ch = chapters[i]!;
+        if (accChars + ch.content.length >= targetChars) {
+          setChapterIndex(i);
+          // 计算章节内滚动比例
+          const chapterOffset = targetChars - accChars;
+          const scrollRatio = ch.content.length > 0 ? chapterOffset / ch.content.length : 0;
+          // 等待渲染后滚动
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (containerRef.current) {
+                const el = containerRef.current;
+                const maxScroll = el.scrollHeight - el.clientHeight;
+                el.scrollTop = maxScroll * Math.min(scrollRatio, 1);
+              }
+            });
+          });
+          break;
+        }
+        accChars += ch.content.length;
+      }
+    }
+
+    window.addEventListener('reader-seek', handleSeek);
+    return () => window.removeEventListener('reader-seek', handleSeek);
+  }, [chapters]);
+
   const colors = themeColors[theme] ?? themeColors.light!;
   const currentChapter = chapters[chapterIndex];
 
@@ -277,6 +337,11 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
 
   // 渲染带高亮的章节内容
   const renderContentWithHighlights = (content: string) => {
+    // 如果有搜索词，优先显示搜索高亮
+    if (searchQuery?.trim()) {
+      return textToHtmlWithSearch(content, searchQuery);
+    }
+
     // 获取当前章节的高亮，转换为 HighlightInfo 格式
     const chapterHighlights = highlights
       .filter((h) => h.chapter === currentChapter?.title)
