@@ -228,8 +228,11 @@ export default function BookCardActions({ book, buttonClassName = '' }: BookCard
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => {
-                  setNewCategory('');
-                  handleSetCategory();
+                  // 直接清除分类，不依赖异步的 state 更新
+                  if (book.category) {
+                    updateBook({ ...book, category: '' });
+                  }
+                  setShowCategory(false);
                 }}
                 className="px-4 py-2 text-sm text-warm-500 hover:bg-warm-50 rounded-lg transition-colors"
               >

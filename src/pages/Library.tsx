@@ -28,6 +28,7 @@ export default function Library() {
   const getCategories = useBookStore((s) => s.getCategories);
   const setSortBy = useBookStore((s) => s.setSortBy);
   const setCategoryFilter = useBookStore((s) => s.setCategoryFilter);
+  const deleteCategory = useBookStore((s) => s.deleteCategory);
   const viewMode = usePreferenceStore((s) => s.viewMode);
 
   useEffect(() => {
@@ -67,7 +68,13 @@ export default function Library() {
                 }`}
               >
                 <span>{cat}</span>
-                {categoryFilter === cat && <X className="w-3 h-3" />}
+                <X
+                  className="w-3 h-3 hover:text-red-500"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteCategory(cat);
+                  }}
+                />
               </button>
             ))}
           </div>

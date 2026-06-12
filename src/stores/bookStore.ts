@@ -17,6 +17,7 @@ interface BookState {
   setSearchQuery: (query: string) => void;
   setSortBy: (sortBy: SortBy) => void;
   setCategoryFilter: (category: string) => void;
+  deleteCategory: (category: string) => Promise<void>;
   getFilteredBooks: () => Book[];
   getCategories: () => string[];
 }
@@ -65,6 +66,19 @@ export const useBookStore = create<BookState>((set, get) => ({
 
   setCategoryFilter: (category: string) => {
     set({ categoryFilter: category });
+  },
+
+  deleteCategory: async (category: string) => {
+    const { books } = get();
+    const affected = books.filter((b) => b.category === category);
+    for (const book of affected) {
+      const updated = { ...book, category: '' };
+      await dbUpdateBook(updated);
+    }
+    set((state) => ({
+      books: state.books.map((b) => (b.category === category ? { ...b, category: '' } : b)),
+      categoryFilter: state.categoryFilter === category ? '' : state.categoryFilter,
+    }));
   },
 
   getCategories: () => {
