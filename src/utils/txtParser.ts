@@ -158,6 +158,92 @@ export function textToHtml(text: string): string {
     .join('');
 }
 
+// 高亮信息接口
+interface HighlightInfo {
+  text: string;
+  color: string;
+  id: string;
+  hasNote?: boolean;
+}
+
+// 将纯文本段落转为带高亮的 HTML
+export function textToHtmlWithHighlights(text: string, highlights: HighlightInfo[]): string {
+  const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+
+  return paragraphs
+    .map((paragraph) => {
+      const trimmed = paragraph.trim();
+      // 找到当前段落中的所有高亮位置
+      const segments = findHighlightSegments(trimmed, highlights);
+
+      const contentHtml = segments
+        .map((seg) => {
+          if (seg.highlight) {
+            const noteClass = seg.highlight.hasNote ? ' highlight-note' : '';
+            return `<span class="highlight-mark${noteClass}" data-highlight-id="${seg.highlight.id}" style="background-color: ${seg.highlight.color}; padding: 2px 0; cursor: pointer; border-radius: 2px;">${escapeHtml(seg.text)}</span>`;
+          }
+          return escapeHtml(seg.text);
+        })
+        .join('');
+
+      return `<p style="text-indent:2em;margin:0.8em 0;">${contentHtml}</p>`;
+    })
+    .join('');
+}
+
+// 在文本中查找高亮位置并分割为片段
+function findHighlightSegments(
+  text: string,
+  highlights: HighlightInfo[]
+): { text: string; highlight: HighlightInfo | null }[] {
+  // 收集所有高亮在当前文本中的位置
+  const ranges: { start: number; end: number; highlight: HighlightInfo }[] = [];
+
+  for (const hl of highlights) {
+    let searchStart = 0;
+    while (searchStart < text.length) {
+      const index = text.indexOf(hl.text, searchStart);
+      if (index === -1) break;
+
+      // 检查是否与已有范围重叠
+      const overlaps = ranges.some(
+        (r) => (index >= r.start && index < r.end) || (index + hl.text.length > r.start && index + hl.text.length <= r.end)
+      );
+
+      if (!overlaps) {
+        ranges.push({ start: index, end: index + hl.text.length, highlight: hl });
+      }
+      searchStart = index + 1;
+    }
+  }
+
+  // 如果没有高亮，直接返回整段文本
+  if (ranges.length === 0) {
+    return [{ text, highlight: null }];
+  }
+
+  // 按起始位置排序
+  ranges.sort((a, b) => a.start - b.start);
+
+  // 分割文本
+  const segments: { text: string; highlight: HighlightInfo | null }[] = [];
+  let pos = 0;
+
+  for (const range of ranges) {
+    if (range.start > pos) {
+      segments.push({ text: text.slice(pos, range.start), highlight: null });
+    }
+    segments.push({ text: text.slice(range.start, range.end), highlight: range.highlight });
+    pos = range.end;
+  }
+
+  if (pos < text.length) {
+    segments.push({ text: text.slice(pos), highlight: null });
+  }
+
+  return segments;
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')

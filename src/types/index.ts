@@ -53,3 +53,18 @@ export interface Bookmark {
   note?: string;
   createdAt: number;
 }
+
+// 高亮颜色
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple';
+
+// 标注/高亮
+export interface Highlight {
+  id: string;
+  bookId: string;
+  location: string;           // 位置信息（与 Book.currentLocation 格式一致）
+  text: string;               // 选中的文本内容
+  color: HighlightColor;      // 高亮颜色
+  note?: string;              // 批注/笔记
+  chapter: string;            // 章节名称
+  createdAt: number;
+}

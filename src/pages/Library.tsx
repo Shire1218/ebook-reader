@@ -19,8 +19,12 @@ export default function Library() {
   const loadBooks = useBookStore((s) => s.loadBooks);
   const isLoading = useBookStore((s) => s.isLoading);
   const sortBy = useBookStore((s) => s.sortBy);
-  const setSortBy = useBookStore((s) => s.setSortBy);
+  // 订阅 books 状态，确保导入/删除书籍后组件重新渲染
+  useBookStore((s) => s.books);
+  // 订阅 searchQuery 以确保搜索时组件重新渲染
+  useBookStore((s) => s.searchQuery);
   const getFilteredBooks = useBookStore((s) => s.getFilteredBooks);
+  const setSortBy = useBookStore((s) => s.setSortBy);
   const viewMode = usePreferenceStore((s) => s.viewMode);
 
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function Library() {
 
         {/* 列表视图 */}
         {!isLoading && books.length > 0 && viewMode === 'list' && (
-          <div className="space-y-2 max-w-4xl">
+          <div className="space-y-2 max-w-4xl pb-16">
             {books.map((book) => (
               <BookCardList key={book.id} book={book} />
             ))}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import ePub, { type Book as EpubBook, type Rendition } from 'epubjs';
-import type { Book } from '@/types';
+import type { Book, Highlight, HighlightColor } from '@/types';
 import { getBookFile, arrayBufferToBlobUrl } from '@/utils/db';
 
 export interface EpubReaderRef {
@@ -14,8 +14,11 @@ interface EpubReaderProps {
   lineHeight: number;
   fontFamily: string;
   theme: string;
-  onLocationChange: (location: string, progress: number) => void;
+  onLocationChange: (location: string, progress: number, chapterName?: string) => void;
   onTocLoaded: (toc: { label: string; href: string }[]) => void;
+  highlights: Highlight[];
+  onTextSelected: (selection: { text: string; cfiRange: string; position: { x: number; y: number } }) => void;
+  onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
 }
 
 // 主题颜色映射
@@ -34,11 +37,20 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
   theme,
   onLocationChange,
   onTocLoaded,
+  highlights,
+  onTextSelected,
+  onHighlightClick,
 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const epubBookRef = useRef<EpubBook | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const highlightsRef = useRef(highlights);
+  highlightsRef.current = highlights;
+  // 跟踪已添加到 epubjs 的标注 CFI
+  const renderedCfiRanges = useRef<Set<string>>(new Set());
+  // 存储目录信息用于查找当前章节
+  const tocRef = useRef<{ label: string; href: string }[]>([]);
 
   // 暴露跳转方法给父组件
   useImperativeHandle(ref, () => ({
@@ -78,6 +90,7 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
             label: item.label?.trim() || '未命名',
             href: item.href,
           }));
+          tocRef.current = tocItems;
           onTocLoaded(tocItems);
         }
       } catch {
@@ -99,11 +112,41 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
       applyTheme(rendition, theme, fontSize, lineHeight, fontFamily);
 
       // 监听位置变化
-      rendition.on('relocated', (location: { start?: { cfi?: string } }) => {
+      rendition.on('relocated', (location: { start?: { cfi?: string; index?: number } }) => {
         if (location?.start?.cfi) {
           const progress = epubBook.locations?.percentageFromCfi(location.start.cfi);
           const pct = progress ? Math.round(progress * 100) : 0;
-          onLocationChange(location.start.cfi, pct);
+          // 根据当前 spine index 查找章节名
+          let chapterName = '';
+          if (location.start.index !== undefined && tocRef.current.length > 0) {
+            const spineItem = epubBook.spine?.get(location.start.index);
+            if (spineItem) {
+              const tocItem = tocRef.current.find((t) => spineItem.href.includes(t.href) || t.href.includes(spineItem.href));
+              if (tocItem) {
+                chapterName = tocItem.label;
+              }
+            }
+          }
+          onLocationChange(location.start.cfi, pct, chapterName);
+        }
+      });
+
+      // 监听文本选择
+      rendition.on('selected', (cfiRange: string, contents: any) => {
+        const selection = contents?.window?.getSelection();
+        if (selection && selection.toString().trim()) {
+          const text = selection.toString().trim();
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const iframe = contents?.window?.frameElement;
+          const iframeRect = iframe?.getBoundingClientRect();
+
+          const position = {
+            x: (iframeRect?.left || 0) + rect.left + rect.width / 2,
+            y: (iframeRect?.top || 0) + rect.top,
+          };
+
+          onTextSelected({ text, cfiRange, position });
         }
       });
 
@@ -124,6 +167,7 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
 
     return () => {
       cancelled = true;
+      renderedCfiRanges.current.clear();
       renditionRef.current?.destroy();
       epubBookRef.current?.destroy();
       renditionRef.current = null;
@@ -137,6 +181,59 @@ const EpubReader = forwardRef<EpubReaderRef, EpubReaderProps>(function EpubReade
       applyTheme(renditionRef.current, theme, fontSize, lineHeight, fontFamily);
     }
   }, [theme, fontSize, lineHeight, fontFamily]);
+
+  // 渲染高亮标注
+  useEffect(() => {
+    const rendition = renditionRef.current;
+    if (!rendition) return;
+
+    const colorMap: Record<HighlightColor, string> = {
+      yellow: '#FEF3C7',
+      green: '#D1FAE5',
+      blue: '#DBEAFE',
+      pink: '#FCE7F3',
+      purple: '#EDE9FE',
+    };
+
+    // 移除不再存在的标注
+    const currentCfiSet = new Set(highlights.map((h) => h.location));
+    renderedCfiRanges.current.forEach((cfiRange) => {
+      if (!currentCfiSet.has(cfiRange)) {
+        try {
+          rendition.annotations.remove(cfiRange, 'highlight');
+        } catch {
+          // 标注可能已不存在
+        }
+        renderedCfiRanges.current.delete(cfiRange);
+      }
+    });
+
+    // 添加新的标注
+    highlights.forEach((highlight) => {
+      if (renderedCfiRanges.current.has(highlight.location)) return;
+
+      try {
+        rendition.annotations.highlight(
+          highlight.location,
+          {},
+          (e: Event) => {
+            e.stopPropagation();
+            const mouseEvent = e as MouseEvent;
+            onHighlightClick(highlight, { x: mouseEvent.clientX, y: mouseEvent.clientY });
+          },
+          undefined,
+          {
+            fill: colorMap[highlight.color],
+            'fill-opacity': '0.5',
+            'mix-blend-mode': 'multiply',
+          }
+        );
+        renderedCfiRanges.current.add(highlight.location);
+      } catch {
+        // CFI 可能不在当前页面，忽略
+      }
+    });
+  }, [highlights, onHighlightClick]);
 
   // 暴露翻页方法
   const goNext = useCallback(() => {

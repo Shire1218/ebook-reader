@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
-import type { Book } from '@/types';
+import type { Book, Highlight, HighlightColor } from '@/types';
 import { getBookFile } from '@/utils/db';
-import { decodeTxtBuffer, splitIntoChapters, textToHtml } from '@/utils/txtParser';
+import { decodeTxtBuffer, splitIntoChapters, textToHtml, textToHtmlWithHighlights } from '@/utils/txtParser';
 import type { TxtChapter } from '@/utils/txtParser';
 
 export interface TxtReaderRef {
@@ -15,8 +15,11 @@ interface TxtReaderProps {
   lineHeight: number;
   fontFamily: string;
   theme: string;
-  onLocationChange: (location: string, progress: number) => void;
+  onLocationChange: (location: string, progress: number, chapterName?: string) => void;
   onTocLoaded: (toc: { label: string; href: string }[]) => void;
+  highlights: Highlight[];
+  onTextSelected: (selection: { text: string; position: { x: number; y: number } }) => void;
+  onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
 }
 
 // 主题颜色映射
@@ -35,6 +38,9 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
   theme,
   onLocationChange,
   onTocLoaded,
+  highlights,
+  onTextSelected,
+  onHighlightClick,
 }, ref) {
   const [chapters, setChapters] = useState<TxtChapter[]>([]);
   const [chapterIndex, setChapterIndex] = useState(0);
@@ -129,7 +135,8 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
       const readChars = chapters.slice(0, chapterIndex).reduce((sum, ch) => sum + ch.content.length, 0);
       const progress = totalChars > 0 ? (readChars / totalChars) * 100 : 0;
       const location = JSON.stringify({ chapter: chapterIndex, scrollRatio: 0 });
-      onLocationChange(location, progress);
+      const chapterName = chapters[chapterIndex]?.title || '';
+      onLocationChange(location, progress, chapterName);
     }
   }, [chapterIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -159,7 +166,8 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     const progress = totalChars > 0 ? (readChars / totalChars) * 100 : 0;
 
     const location = JSON.stringify({ chapter: chapterIndex, scrollRatio: Math.min(scrollRatio, 1) });
-    onLocationChange(location, progress);
+    const chapterName = chapters[chapterIndex]?.title || '';
+    onLocationChange(location, progress, chapterName);
   }, [chapterIndex, chapters, onLocationChange]);
 
   // 用节流控制滚动回调频率
@@ -218,8 +226,58 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [chapterIndex, chapters.length]);
 
+  // 监听文本选择
+  useEffect(() => {
+    function handleMouseUp() {
+      const selection = window.getSelection();
+      if (selection && selection.toString().trim()) {
+        const text = selection.toString().trim();
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        const position = {
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+        };
+
+        onTextSelected({ text, position });
+      }
+    }
+
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [onTextSelected]);
+
   const colors = themeColors[theme] ?? themeColors.light!;
   const currentChapter = chapters[chapterIndex];
+
+  // 高亮颜色映射
+  const colorMap: Record<HighlightColor, string> = {
+    yellow: '#FEF3C7',
+    green: '#D1FAE5',
+    blue: '#DBEAFE',
+    pink: '#FCE7F3',
+    purple: '#EDE9FE',
+  };
+
+  // 渲染带高亮的章节内容
+  const renderContentWithHighlights = (content: string) => {
+    // 获取当前章节的高亮，转换为 HighlightInfo 格式
+    const chapterHighlights = highlights
+      .filter((h) => h.chapter === currentChapter?.title)
+      .map((h) => ({
+        text: h.text,
+        color: colorMap[h.color],
+        id: h.id,
+        hasNote: !!h.note,
+      }));
+
+    if (chapterHighlights.length === 0) {
+      return textToHtml(content);
+    }
+
+    return textToHtmlWithHighlights(content, chapterHighlights);
+  };
 
   if (isLoading) {
     return (
@@ -268,7 +326,18 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
         {/* 章节完整内容 */}
         <div
           className="txt-content"
-          dangerouslySetInnerHTML={{ __html: textToHtml(currentChapter.content) }}
+          dangerouslySetInnerHTML={{ __html: renderContentWithHighlights(currentChapter.content) }}
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.classList.contains('highlight-mark')) {
+              const highlightId = target.getAttribute('data-highlight-id');
+              const highlight = highlights.find((h) => h.id === highlightId);
+              if (highlight) {
+                const rect = target.getBoundingClientRect();
+                onHighlightClick(highlight, { x: rect.left + rect.width / 2, y: rect.bottom });
+              }
+            }
+          }}
         />
 
         {/* 章节末尾导航 */}
