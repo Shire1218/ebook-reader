@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ReadingPreference, ThemeType, ViewMode } from '@/types';
+import type { ReadingPreference, ThemeType, ViewMode, TextAlignment } from '@/types';
 
 const STORAGE_KEY = 'reading-preferences';
 
@@ -11,6 +11,8 @@ const defaultPreferences: ReadingPreference = {
   theme: 'light',
   brightness: 100,
   viewMode: 'grid',
+  textAlignment: 'justify',
+  paragraphSpacing: 0.8,
 };
 
 // 从 localStorage 读取偏好
@@ -38,6 +40,8 @@ interface PreferenceState extends ReadingPreference {
   setTheme: (theme: ThemeType) => void;
   setBrightness: (brightness: number) => void;
   setViewMode: (viewMode: ViewMode) => void;
+  setTextAlignment: (alignment: TextAlignment) => void;
+  setParagraphSpacing: (spacing: number) => void;
   resetPreferences: () => void;
 }
 
@@ -54,6 +58,8 @@ export const usePreferenceStore = create<PreferenceState>((set) => {
       theme: current.theme,
       brightness: current.brightness,
       viewMode: current.viewMode,
+      textAlignment: current.textAlignment,
+      paragraphSpacing: current.paragraphSpacing,
     };
     saveToStorage(prefs);
   }
@@ -67,6 +73,8 @@ export const usePreferenceStore = create<PreferenceState>((set) => {
     setTheme: (theme) => updateAndSave({ theme }),
     setBrightness: (brightness) => updateAndSave({ brightness }),
     setViewMode: (viewMode) => updateAndSave({ viewMode }),
+    setTextAlignment: (textAlignment) => updateAndSave({ textAlignment }),
+    setParagraphSpacing: (paragraphSpacing) => updateAndSave({ paragraphSpacing }),
     resetPreferences: () => {
       saveToStorage(defaultPreferences);
       set(defaultPreferences);

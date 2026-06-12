@@ -1,4 +1,4 @@
-import { Search, LayoutGrid, List, Plus } from 'lucide-react';
+import { Search, LayoutGrid, List, Plus, FilePlus } from 'lucide-react';
 import { useBookStore } from '@/stores/bookStore';
 import { usePreferenceStore } from '@/stores/preferenceStore';
 import { useBookImport } from '@/hooks/useBookImport';
@@ -6,9 +6,10 @@ import { useBookImport } from '@/hooks/useBookImport';
 interface TopBarProps {
   title?: string;
   showImport?: boolean;
+  onCreateNew?: () => void;
 }
 
-export default function TopBar({ title, showImport = true }: TopBarProps) {
+export default function TopBar({ title, showImport = true, onCreateNew }: TopBarProps) {
   const searchQuery = useBookStore((s) => s.searchQuery);
   const setSearchQuery = useBookStore((s) => s.setSearchQuery);
   const viewMode = usePreferenceStore((s) => s.viewMode);
@@ -67,6 +68,19 @@ export default function TopBar({ title, showImport = true }: TopBarProps) {
             <List className="w-4 h-4" />
           </button>
         </div>
+
+        {/* 新建 TXT 按钮 */}
+        {showImport && onCreateNew && (
+          <button
+            onClick={onCreateNew}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-warm-600 text-sm font-medium
+                       rounded-lg border border-warm-300 hover:bg-warm-50 hover:border-warm-400
+                       shadow-sm transition-all duration-200"
+          >
+            <FilePlus className="w-4 h-4" />
+            <span>新建</span>
+          </button>
+        )}
 
         {/* 导入按钮 */}
         {showImport && (

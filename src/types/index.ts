@@ -10,6 +10,9 @@ export type ViewMode = 'grid' | 'list';
 // 排序方式
 export type SortBy = 'lastRead' | 'title' | 'importTime';
 
+// 文本对齐方式
+export type TextAlignment = 'left' | 'center' | 'right' | 'justify';
+
 // 书籍元信息
 export interface Book {
   id: string;
@@ -34,6 +37,8 @@ export interface ReadingPreference {
   theme: ThemeType;
   brightness: number;
   viewMode: ViewMode;
+  textAlignment: TextAlignment;   // 文本对齐方式
+  paragraphSpacing: number;       // 段间距 (em)
 }
 
 // 目录项
@@ -68,4 +73,6 @@ export interface Highlight {
   note?: string;              // 批注/笔记
   chapter: string;            // 章节名称
   createdAt: number;
+  paragraphIndex?: number;    // 段落索引（TXT 格式精确位置）
+  offsetInParagraph?: number; // 在段落中的偏移位置（TXT 格式精确位置）
 }

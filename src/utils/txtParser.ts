@@ -150,11 +150,19 @@ export function paginateChapter(content: string, charsPerPage: number): string[]
   return pages.length > 0 ? pages : [''];
 }
 
+// 段落格式参数
+export interface ParagraphFormat {
+  alignment?: string;     // 对齐方式
+  spacing?: number;       // 段间距 (em)
+}
+
 // 将纯文本段落转为带缩进的 HTML
-export function textToHtml(text: string): string {
+export function textToHtml(text: string, format?: ParagraphFormat): string {
   const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  const align = format?.alignment || 'justify';
+  const spacing = format?.spacing ?? 0.8;
   return paragraphs
-    .map((p) => `<p style="text-indent:2em;margin:0.8em 0;">${escapeHtml(p.trim())}</p>`)
+    .map((p) => `<p style="text-indent:2em;margin:${spacing}em 0;text-align:${align};">${escapeHtml(p.trim())}</p>`)
     .join('');
 }
 
@@ -164,17 +172,21 @@ interface HighlightInfo {
   color: string;
   id: string;
   hasNote?: boolean;
+  paragraphIndex?: number;    // 段落索引（精确位置）
+  offsetInParagraph?: number; // 在段落中的偏移位置（精确位置）
 }
 
 // 将纯文本段落转为带高亮的 HTML
-export function textToHtmlWithHighlights(text: string, highlights: HighlightInfo[]): string {
+export function textToHtmlWithHighlights(text: string, highlights: HighlightInfo[], format?: ParagraphFormat): string {
   const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  const align = format?.alignment || 'justify';
+  const spacing = format?.spacing ?? 0.8;
 
   return paragraphs
-    .map((paragraph) => {
+    .map((paragraph, paraIdx) => {
       const trimmed = paragraph.trim();
-      // 找到当前段落中的所有高亮位置
-      const segments = findHighlightSegments(trimmed, highlights);
+      // 找到当前段落中的高亮位置
+      const segments = findHighlightSegments(trimmed, highlights, paraIdx);
 
       const contentHtml = segments
         .map((seg) => {
@@ -186,20 +198,48 @@ export function textToHtmlWithHighlights(text: string, highlights: HighlightInfo
         })
         .join('');
 
-      return `<p style="text-indent:2em;margin:0.8em 0;">${contentHtml}</p>`;
+      return `<p style="text-indent:2em;margin:${spacing}em 0;text-align:${align};">${contentHtml}</p>`;
     })
     .join('');
+}
+
+// 从 HTML 提取纯文本（用于编辑保存）
+export function htmlToPlainText(html: string): string {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  const paragraphs: string[] = [];
+  div.querySelectorAll('p').forEach((p) => {
+    const text = p.textContent?.trim() || '';
+    if (text) paragraphs.push(text);
+  });
+  return paragraphs.join('\n');
 }
 
 // 在文本中查找高亮位置并分割为片段
 function findHighlightSegments(
   text: string,
-  highlights: HighlightInfo[]
+  highlights: HighlightInfo[],
+  currentParagraphIndex: number
 ): { text: string; highlight: HighlightInfo | null }[] {
   // 收集所有高亮在当前文本中的位置
   const ranges: { start: number; end: number; highlight: HighlightInfo }[] = [];
 
   for (const hl of highlights) {
+    // 如果有精确位置信息，只在指定位置匹配
+    if (hl.paragraphIndex !== undefined && hl.offsetInParagraph !== undefined) {
+      // 只匹配对应段落
+      if (hl.paragraphIndex !== currentParagraphIndex) continue;
+
+      const offset = hl.offsetInParagraph;
+      // 验证该位置的文本是否与高亮文本匹配
+      const substr = text.substring(offset, offset + hl.text.length);
+      if (substr === hl.text) {
+        ranges.push({ start: offset, end: offset + hl.text.length, highlight: hl });
+      }
+      continue;
+    }
+
+    // 兼容旧数据：没有位置信息时，匹配所有出现
     let searchStart = 0;
     while (searchStart < text.length) {
       const index = text.indexOf(hl.text, searchStart);
@@ -252,13 +292,15 @@ function escapeHtml(text: string): string {
 }
 
 // 将纯文本段落转为带搜索关键词高亮的 HTML
-export function textToHtmlWithSearch(text: string, query: string): string {
-  if (!query.trim()) return textToHtml(text);
+export function textToHtmlWithSearch(text: string, query: string, format?: ParagraphFormat): string {
+  if (!query.trim()) return textToHtml(text, format);
   const paragraphs = text.split(/\n+/).filter((p) => p.trim());
   // 先对搜索词做 HTML 转义，再转义正则特殊字符
   const escapedHtml = escapeHtml(query);
   const escapedRegex = escapedHtml.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escapedRegex})`, 'gi');
+  const align = format?.alignment || 'justify';
+  const spacing = format?.spacing ?? 0.8;
 
   return paragraphs
     .map((p) => {
@@ -266,7 +308,7 @@ export function textToHtmlWithSearch(text: string, query: string): string {
         regex,
         '<mark class="search-match">$1</mark>'
       );
-      return `<p style="text-indent:2em;margin:0.8em 0;">${contentHtml}</p>`;
+      return `<p style="text-indent:2em;margin:${spacing}em 0;text-align:${align};">${contentHtml}</p>`;
     })
     .join('');
 }

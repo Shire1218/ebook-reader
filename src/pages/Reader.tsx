@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, List, Settings, Bookmark, BookmarkCheck, X, Highlighter, Trash2, Pencil, Check, Search, Keyboard } from 'lucide-react';
+import { ArrowLeft, List, Settings, Bookmark, BookmarkCheck, X, Highlighter, Trash2, Pencil, Check, Search, Keyboard, PenLine } from 'lucide-react';
 import { useBookStore } from '@/stores/bookStore';
 import { usePreferenceStore } from '@/stores/preferenceStore';
 import EpubReader from '@/components/Reader/EpubReader';
@@ -22,8 +22,11 @@ import {
   addHighlight,
   deleteHighlight,
   updateHighlight,
+  saveBookFile,
+  getBookFile,
 } from '@/utils/db';
-import type { Bookmark as BookmarkType, TocItem, Highlight, HighlightColor } from '@/types';
+import { decodeTxtBuffer, splitIntoChapters } from '@/utils/txtParser';
+import type { Bookmark as BookmarkType, TocItem, Highlight, HighlightColor, TextAlignment } from '@/types';
 
 // Toast 消息类型
 type ToastType = 'success' | 'error';
@@ -91,6 +94,11 @@ export default function Reader() {
   const [activeSearchIdx, setActiveSearchIdx] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // 编辑模式状态
+  const [isEditMode, setIsEditMode] = useState(false);
+  const editedChaptersRef = useRef<Record<number, string>>({});  // 跟踪编辑后的章节内容
+  const lastEditChapterRef = useRef<number>(-1);  // 上次编辑的章节索引
+
   // 阅读器 ref
   const epubReaderRef = useRef<EpubReaderRef>(null);
   const txtReaderRef = useRef<TxtReaderRef>(null);
@@ -102,6 +110,10 @@ export default function Reader() {
   const setLineHeight = usePreferenceStore((s) => s.setLineHeight);
   const setFontFamily = usePreferenceStore((s) => s.setFontFamily);
   const setTheme = usePreferenceStore((s) => s.setTheme);
+  const textAlignment = usePreferenceStore((s) => s.textAlignment);
+  const paragraphSpacing = usePreferenceStore((s) => s.paragraphSpacing);
+  const setTextAlignment = usePreferenceStore((s) => s.setTextAlignment);
+  const setParagraphSpacing = usePreferenceStore((s) => s.setParagraphSpacing);
 
   const book = books.find((b) => b.id === bookId);
   const bookRef = useRef(book);
@@ -222,15 +234,19 @@ export default function Reader() {
     text: string;
     position: { x: number; y: number };
     cfiRange?: string;
+    paragraphIndex?: number;
+    offsetInParagraph?: number;
   } | null>(null);
 
   // 处理文本选择（弹出工具栏）
   const handleTextSelected = useCallback(
-    (selection: { text: string; cfiRange?: string; position: { x: number; y: number } }) => {
+    (selection: { text: string; cfiRange?: string; position: { x: number; y: number }; paragraphIndex?: number; offsetInParagraph?: number }) => {
       setSelectionToolbar({
         text: selection.text,
         position: selection.position,
         cfiRange: selection.cfiRange,
+        paragraphIndex: selection.paragraphIndex,
+        offsetInParagraph: selection.offsetInParagraph,
       });
     },
     []
@@ -248,6 +264,8 @@ export default function Reader() {
         color,
         chapter: currentChapterName || `进度 ${Math.round(progress)}%`,
         createdAt: Date.now(),
+        paragraphIndex: selectionToolbar.paragraphIndex,
+        offsetInParagraph: selectionToolbar.offsetInParagraph,
       };
       try {
         await addHighlight(highlight);
@@ -275,6 +293,8 @@ export default function Reader() {
         note,
         chapter: currentChapterName || `进度 ${Math.round(progress)}%`,
         createdAt: Date.now(),
+        paragraphIndex: selectionToolbar.paragraphIndex,
+        offsetInParagraph: selectionToolbar.offsetInParagraph,
       };
       try {
         await addHighlight(highlight);
@@ -354,6 +374,119 @@ export default function Reader() {
       showToast('删除标注失败', 'error');
     }
   }, [showToast]);
+
+  // 保存编辑 - 将编辑内容写回原始文件
+  const handleSaveEdit = useCallback(async () => {
+    if (!book) return;
+
+    try {
+      // 保存当前章节的编辑内容
+      if (txtReaderRef.current?.isDirty()) {
+        const currentHtml = txtReaderRef.current.getEditedContent();
+        const div = document.createElement('div');
+        div.innerHTML = currentHtml;
+        const paragraphs: string[] = [];
+        div.querySelectorAll('p').forEach((p) => {
+          const text = p.textContent?.trim() || '';
+          if (text) paragraphs.push(text);
+        });
+        // 如果没有 <p> 标签（如新建空文件后直接输入），回退提取纯文本
+        if (paragraphs.length === 0) {
+          const text = div.textContent?.trim() || '';
+          if (text) paragraphs.push(text);
+        }
+        const chapterIdx = txtReaderRef.current.getCurrentChapterIndex();
+        editedChaptersRef.current[chapterIdx] = paragraphs.join('\n');
+      }
+
+      // 如果没有编辑任何章节，提示用户
+      if (Object.keys(editedChaptersRef.current).length === 0) {
+        showToast('没有修改任何内容', 'error');
+        return;
+      }
+
+      // 读取原始文件
+      const fileData = await getBookFile(book.id);
+      if (!fileData) {
+        showToast('无法读取原始文件', 'error');
+        return;
+      }
+
+      // 解码原始文件
+      const originalText = decodeTxtBuffer(fileData);
+      const chapters = splitIntoChapters(originalText);
+
+      // 重建完整文件
+      let fullText = '';
+      for (let i = 0; i < chapters.length; i++) {
+        const chapter = chapters[i]!;
+        // 添加章节标题（如果不是"正文"）
+        if (chapter.title !== '正文') {
+          if (fullText) fullText += '\n';
+          fullText += chapter.title + '\n';
+        } else if (i > 0) {
+          fullText += '\n';
+        }
+        // 使用编辑后的内容或原始内容
+        const content = editedChaptersRef.current[i] || chapter.content;
+        fullText += content;
+      }
+
+      // 编码并保存
+      const encoder = new TextEncoder();
+      const newData = encoder.encode(fullText).buffer;
+      await saveBookFile(book.id, newData);
+
+      // 清理编辑状态
+      editedChaptersRef.current = {};
+      lastEditChapterRef.current = -1;
+      setIsEditMode(false);
+      showToast('文件已保存');
+    } catch (err) {
+      console.error('保存失败:', err);
+      showToast('保存失败', 'error');
+    }
+  }, [book, showToast]);
+
+  // 取消编辑
+  const handleCancelEdit = useCallback(() => {
+    if (txtReaderRef.current?.isDirty()) {
+      if (!confirm('有未保存的修改，确定要放弃吗？')) {
+        return;
+      }
+    }
+    txtReaderRef.current?.reloadChapter();
+    editedChaptersRef.current = {};
+    lastEditChapterRef.current = -1;
+    setIsEditMode(false);
+  }, []);
+
+  // 格式化命令处理
+  const handleFormatCommand = useCallback((command: string, value?: string) => {
+    if (command === 'bold') {
+      document.execCommand('bold');
+    } else if (command === 'italic') {
+      document.execCommand('italic');
+    } else if (command === 'underline') {
+      document.execCommand('underline');
+    } else if (command === 'delete') {
+      document.execCommand('delete');
+    } else if (command === 'insertText' && value) {
+      document.execCommand('insertText', false, value);
+    }
+  }, []);
+
+  // 段落对齐变化处理 - 仅对选中的段落生效
+  const handleParagraphAlign = useCallback((alignment: TextAlignment) => {
+    // 使用 execCommand 仅对选中的段落生效
+    const commandMap: Record<TextAlignment, string> = {
+      left: 'justifyLeft',
+      center: 'justifyCenter',
+      right: 'justifyRight',
+      justify: 'justifyFull',
+    };
+    document.execCommand(commandMap[alignment]);
+  }, []);
 
   // 点击标注记录定位
   const handleHighlightNavigate = useCallback((highlight: Highlight) => {
@@ -448,6 +581,40 @@ export default function Reader() {
       }, 2000);
     },
     [updateBook]
+  );
+
+  // 包装 handleLocationChange，在章节切换时保存编辑内容
+  const wrappedHandleLocationChange = useCallback(
+    (location: string, newProgress: number, chapterName?: string) => {
+      // 如果处于编辑模式，检查是否切换了章节
+      if (isEditMode && txtReaderRef.current) {
+        const currentIdx = txtReaderRef.current.getCurrentChapterIndex();
+        if (lastEditChapterRef.current >= 0 && lastEditChapterRef.current !== currentIdx) {
+          // 章节切换了，保存上一章的编辑内容
+          if (txtReaderRef.current.isDirty()) {
+            const html = txtReaderRef.current.getEditedContent();
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            const paragraphs: string[] = [];
+            div.querySelectorAll('p').forEach((p) => {
+              const text = p.textContent?.trim() || '';
+              if (text) paragraphs.push(text);
+            });
+            // 如果没有 <p> 标签（如新建空文件后直接输入），回退提取纯文本
+            if (paragraphs.length === 0) {
+              const text = div.textContent?.trim() || '';
+              if (text) paragraphs.push(text);
+            }
+            editedChaptersRef.current[lastEditChapterRef.current] = paragraphs.join('\n');
+          }
+        }
+        lastEditChapterRef.current = currentIdx;
+      }
+
+      // 调用原始的 handleLocationChange
+      handleLocationChange(location, newProgress, chapterName);
+    },
+    [isEditMode, handleLocationChange]
   );
 
   // 组件卸载时立即刷新保存进度
@@ -745,6 +912,25 @@ export default function Reader() {
         <h1 className="font-serif text-sm font-medium truncate max-w-xs">{book.title}</h1>
 
         <div className="flex items-center gap-1">
+          {/* 编辑模式按钮（仅 TXT 格式） */}
+          {book.format === 'txt' && (
+            <button
+              onClick={() => {
+                if (isEditMode) {
+                  handleCancelEdit();
+                } else {
+                  setIsEditMode(true);
+                  lastEditChapterRef.current = txtReaderRef.current?.getCurrentChapterIndex() ?? -1;
+                }
+                closeAllPanels();
+              }}
+              className={`p-2 rounded-lg transition-colors ${isEditMode ? 'bg-amber-400/20 text-amber-600' : 'hover:bg-black/5'}`}
+              title={isEditMode ? '退出编辑' : '编辑模式'}
+            >
+              <PenLine className="w-4 h-4" />
+            </button>
+          )}
+
           {/* 搜索按钮 */}
           <button
             onClick={() => {
@@ -1098,12 +1284,15 @@ export default function Reader() {
               lineHeight={lineHeight}
               fontFamily={fontFamily}
               theme={theme}
-              onLocationChange={handleLocationChange}
+              onLocationChange={wrappedHandleLocationChange}
               onTocLoaded={handleTocLoaded}
               highlights={highlights}
               onTextSelected={handleTextSelected}
               onHighlightClick={handleHighlightClick}
               searchQuery={showSearch ? searchQuery : ''}
+              isEditMode={isEditMode}
+              textAlignment={textAlignment}
+              paragraphSpacing={paragraphSpacing}
             />
           )}
         </div>
@@ -1176,6 +1365,48 @@ export default function Reader() {
               />
             </div>
 
+            {/* 段落间距 */}
+            <div className="mb-5">
+              <label className="text-xs opacity-50 mb-2 flex items-center justify-between">
+                <span>段间距</span>
+                <span className="tabular-nums">{paragraphSpacing.toFixed(1)}em</span>
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={3.0}
+                step={0.1}
+                value={paragraphSpacing}
+                onChange={(e) => setParagraphSpacing(Number(e.target.value))}
+                className="w-full accent-warm-400"
+              />
+            </div>
+
+            {/* 文本对齐 */}
+            <div className="mb-5">
+              <label className="text-xs opacity-50 mb-2 block">文本对齐</label>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: '左对齐', value: 'left' as const },
+                  { label: '居中', value: 'center' as const },
+                  { label: '右对齐', value: 'right' as const },
+                  { label: '两端', value: 'justify' as const },
+                ].map((align) => (
+                  <button
+                    key={align.value}
+                    onClick={() => setTextAlignment(align.value)}
+                    className={`px-2 py-2 text-xs rounded-lg border transition-all ${
+                      textAlignment === align.value
+                        ? 'border-warm-400 bg-warm-400/10'
+                        : 'border-black/10 hover:border-black/20'
+                    }`}
+                  >
+                    {align.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* 主题 */}
             <div>
               <label className="text-xs opacity-50 mb-2 block">主题</label>
@@ -1208,24 +1439,44 @@ export default function Reader() {
 
       {/* 底部进度栏 */}
       <footer className="h-12 flex items-center px-6 bg-black/5 border-t border-black/5 flex-shrink-0">
-        <div className="flex items-center gap-4 flex-1">
-          <span className="text-xs opacity-50 tabular-nums w-12">{Math.round(currentProgress)}%</span>
-          <div className="flex-1 relative flex items-center">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={currentProgress}
-              onMouseDown={handleProgressMouseDown}
-              onInput={handleProgressInput}
-              onChange={handleProgressChange}
-              className="flex-1 accent-warm-400 cursor-pointer"
-            />
+        {isEditMode ? (
+          // 编辑模式：显示保存/取消按钮
+          <div className="flex items-center gap-3 flex-1 justify-center">
+            <span className="text-xs text-amber-600">编辑模式</span>
+            <button
+              onClick={handleCancelEdit}
+              className="px-4 py-1.5 text-xs text-warm-600 bg-white/50 hover:bg-white/80 border border-black/10 rounded-lg transition-colors"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              className="px-4 py-1.5 text-xs text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors"
+            >
+              保存修改
+            </button>
           </div>
-          <span className="text-xs opacity-50 tabular-nums w-12 text-right">
-            {currentChapterName ? currentChapterName.slice(0, 8) : ''}
-          </span>
-        </div>
+        ) : (
+          // 正常模式：显示进度条
+          <div className="flex items-center gap-4 flex-1">
+            <span className="text-xs opacity-50 tabular-nums w-12">{Math.round(currentProgress)}%</span>
+            <div className="flex-1 relative flex items-center">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={currentProgress}
+                onMouseDown={handleProgressMouseDown}
+                onInput={handleProgressInput}
+                onChange={handleProgressChange}
+                className="flex-1 accent-warm-400 cursor-pointer"
+              />
+            </div>
+            <span className="text-xs opacity-50 tabular-nums w-12 text-right">
+              {currentChapterName ? currentChapterName.slice(0, 8) : ''}
+            </span>
+          </div>
+        )}
       </footer>
 
       {/* 选中文本工具栏 */}
@@ -1236,6 +1487,9 @@ export default function Reader() {
         onHighlight={handleHighlight}
         onAddNote={handleAddNote}
         onClose={() => setSelectionToolbar(null)}
+        isEditMode={isEditMode}
+        onFormatCommand={isEditMode ? handleFormatCommand : undefined}
+        onParagraphAlign={isEditMode ? handleParagraphAlign : undefined}
       />
 
       {/* 高亮详情弹窗 */}

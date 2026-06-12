@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import TopBar from '@/components/Layout/TopBar';
 import BookCardGrid from '@/components/BookCard/BookCardGrid';
 import BookCardList from '@/components/BookCard/BookCardList';
@@ -6,6 +7,7 @@ import DropZone from '@/components/DropZone';
 import EmptyState from '@/components/EmptyState';
 import { useBookStore } from '@/stores/bookStore';
 import { usePreferenceStore } from '@/stores/preferenceStore';
+import { useBookImport } from '@/hooks/useBookImport';
 import { ArrowDownAZ, Clock, Calendar, Tag, X } from 'lucide-react';
 import type { SortBy } from '@/types';
 
@@ -16,6 +18,7 @@ const sortOptions: { value: SortBy; label: string; icon: typeof Clock }[] = [
 ];
 
 export default function Library() {
+  const navigate = useNavigate();
   const loadBooks = useBookStore((s) => s.loadBooks);
   const isLoading = useBookStore((s) => s.isLoading);
   const sortBy = useBookStore((s) => s.sortBy);
@@ -30,6 +33,12 @@ export default function Library() {
   const setCategoryFilter = useBookStore((s) => s.setCategoryFilter);
   const deleteCategory = useBookStore((s) => s.deleteCategory);
   const viewMode = usePreferenceStore((s) => s.viewMode);
+  const { createEmptyTxtBook } = useBookImport();
+
+  // 新建 TXT 弹窗状态
+  const [showNewFileDialog, setShowNewFileDialog] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     loadBooks();
@@ -38,9 +47,34 @@ export default function Library() {
   const books = getFilteredBooks();
   const categories = getCategories();
 
+  // 打开新建弹窗
+  const handleOpenNewFile = useCallback(() => {
+    setNewFileName('');
+    setShowNewFileDialog(true);
+  }, []);
+
+  // 确认新建
+  const handleConfirmNewFile = useCallback(async () => {
+    const name = newFileName.trim();
+    if (!name || isCreating) return;
+
+    setIsCreating(true);
+    try {
+      const book = await createEmptyTxtBook(name);
+      setShowNewFileDialog(false);
+      setNewFileName('');
+      // 创建后直接跳转到阅读器，方便用户编辑
+      navigate(`/reader/${book.id}`);
+    } catch (err) {
+      console.error('新建文件失败:', err);
+    } finally {
+      setIsCreating(false);
+    }
+  }, [newFileName, isCreating, createEmptyTxtBook, navigate]);
+
   return (
     <DropZone>
-      <TopBar title="我的书架" />
+      <TopBar title="我的书架" onCreateNew={handleOpenNewFile} />
 
       <div className="flex-1 overflow-auto p-6">
         {/* 分类筛选栏 */}
@@ -117,7 +151,7 @@ export default function Library() {
         )}
 
         {/* 空状态 */}
-        {!isLoading && books.length === 0 && <EmptyState />}
+        {!isLoading && books.length === 0 && <EmptyState onCreateNew={handleOpenNewFile} />}
 
         {/* 网格视图 */}
         {!isLoading && books.length > 0 && viewMode === 'grid' && (
@@ -137,6 +171,66 @@ export default function Library() {
           </div>
         )}
       </div>
+
+      {/* 新建 TXT 文件弹窗 */}
+      {showNewFileDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+          onClick={() => !isCreating && setShowNewFileDialog(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-black/10 w-96 overflow-hidden animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-black/5">
+              <h3 className="font-medium text-warm-800">新建 TXT 文件</h3>
+              <button
+                onClick={() => setShowNewFileDialog(false)}
+                disabled={isCreating}
+                className="p-1 hover:bg-black/5 rounded transition-colors"
+              >
+                <X className="w-4 h-4 text-warm-400" />
+              </button>
+            </div>
+            <div className="p-5">
+              <label className="text-sm text-warm-600 mb-2 block">文件名</label>
+              <input
+                type="text"
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmNewFile();
+                  if (e.key === 'Escape') setShowNewFileDialog(false);
+                }}
+                placeholder="输入文件名（不含扩展名）"
+                autoFocus
+                disabled={isCreating}
+                className="w-full px-4 py-2.5 text-sm bg-warm-50 border border-warm-200 rounded-lg
+                           focus:outline-none focus:ring-2 focus:ring-warm-400/30 focus:border-warm-400
+                           placeholder:text-warm-300 transition-all disabled:opacity-50"
+              />
+              <p className="text-xs text-warm-400 mt-2">将创建一个空的 TXT 文件，可在阅读器中编辑内容</p>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-black/5 bg-warm-50/50">
+              <button
+                onClick={() => setShowNewFileDialog(false)}
+                disabled={isCreating}
+                className="px-4 py-2 text-sm text-warm-500 hover:bg-black/5 rounded-lg transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmNewFile}
+                disabled={!newFileName.trim() || isCreating}
+                className="px-4 py-2 text-sm text-white bg-warm-400 hover:bg-warm-500 rounded-lg
+                           transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreating ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DropZone>
   );
 }

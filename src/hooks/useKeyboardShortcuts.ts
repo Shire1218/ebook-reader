@@ -17,7 +17,6 @@ export const SHORTCUTS: ShortcutDef[] = [
   { key: 'ArrowRight', description: '下一页 / 下一章', category: 'reader' },
   { key: 'PageUp', description: '向上翻屏', category: 'reader' },
   { key: 'PageDown', description: '向下翻屏', category: 'reader' },
-  { key: ' ', description: '向下翻屏（TXT）', category: 'reader' },
   { key: 'ArrowUp', description: '向上滚动（TXT）', category: 'reader' },
   { key: 'ArrowDown', description: '向下滚动（TXT）', category: 'reader' },
   // 面板控制

@@ -49,9 +49,47 @@ export function useBookImport() {
     return 0;
   }, [openFilePicker, importFiles]);
 
+  // 新建空 TXT 文件
+  const createEmptyTxtBook = useCallback(
+    async (title: string) => {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+      // 基于书名生成封面颜色
+      let hash = 0;
+      for (let i = 0; i < title.length; i++) {
+        hash = title.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const hue = Math.abs(hash) % 360;
+
+      const book = {
+        id,
+        title,
+        author: '未知作者',
+        format: 'txt' as const,
+        coverUrl: `hsl(${hue}, 45%, 55%)`,
+        fileSize: 0,
+        progress: 0,
+        currentLocation: '',
+        currentChapter: '',
+        lastReadTime: Date.now(),
+        importTime: Date.now(),
+        category: '',
+      };
+
+      await addBook(book);
+      // 创建空的 UTF-8 文本内容
+      const encoder = new TextEncoder();
+      const data = encoder.encode('').buffer;
+      await saveBookFile(id, data);
+
+      return book;
+    },
+    [addBook]
+  );
+
   return {
     importFiles,
     importFromFilePicker,
+    createEmptyTxtBook,
     acceptedFormats: ACCEPTED_FORMATS,
   };
 }

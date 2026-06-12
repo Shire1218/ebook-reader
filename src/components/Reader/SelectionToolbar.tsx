@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { MessageSquarePlus, X, GripVertical } from 'lucide-react';
-import type { HighlightColor } from '@/types';
+import { MessageSquarePlus, X, GripVertical, Copy, Scissors, Clipboard, Trash2, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react';
+import type { HighlightColor, TextAlignment } from '@/types';
 
 interface SelectionToolbarProps {
   visible: boolean;
@@ -9,6 +9,10 @@ interface SelectionToolbarProps {
   onHighlight: (color: HighlightColor) => void;
   onAddNote: (color: HighlightColor, note: string) => Promise<void>;
   onClose: () => void;
+  // 编辑模式相关
+  isEditMode?: boolean;
+  onFormatCommand?: (command: string, value?: string) => void;
+  onParagraphAlign?: (alignment: TextAlignment) => void;
 }
 
 // 高亮颜色选项
@@ -25,8 +29,8 @@ const MIN_WIDTH = 240;
 const MIN_HEIGHT = 160;
 const MAX_WIDTH = 600;
 const MAX_HEIGHT = 700;
-const DEFAULT_WIDTH = 288;
-const DEFAULT_HEIGHT = 280;
+const DEFAULT_WIDTH = 400;
+const DEFAULT_HEIGHT = 500;
 
 export default function SelectionToolbar({
   visible,
@@ -35,10 +39,15 @@ export default function SelectionToolbar({
   onHighlight,
   onAddNote,
   onClose,
+  isEditMode = false,
+  onFormatCommand,
+  onParagraphAlign,
 }: SelectionToolbarProps) {
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [note, setNote] = useState('');
   const [selectedColor, setSelectedColor] = useState<HighlightColor>('yellow');
+  // 动态检测当前选中段落的对齐方式
+  const [currentAlignment, setCurrentAlignment] = useState<TextAlignment>('left');
   const [submitting, setSubmitting] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const noteInputRef = useRef<HTMLTextAreaElement>(null);
@@ -48,6 +57,22 @@ export default function SelectionToolbar({
   const [isDragging, setIsDragging] = useState(false);
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const hasInitializedRef = useRef(false);
+
+  // 跟踪批注输入是否打开（用于 mousedown 处理）
+  const showNoteInputRef = useRef(false);
+  useEffect(() => {
+    showNoteInputRef.current = showNoteInput;
+  }, [showNoteInput]);
+
+  // 防止面板 mousedown 导致 contentEditable 失焦和选区丢失
+  const handlePanelMouseDown = useCallback((e: React.MouseEvent) => {
+    // 允许输入框正常获取焦点
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return;
+    // 批注输入打开时不阻止，允许点击其他区域关闭输入
+    if (showNoteInputRef.current) return;
+    e.preventDefault();
+  }, []);
 
   // 缩放状态
   const [panelSize, setPanelSize] = useState<{ width: number; height: number }>({
@@ -147,6 +172,30 @@ export default function SelectionToolbar({
       setShowNoteInput(false);
       setNote('');
       setPanelSize({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+      // 检测当前选中段落的对齐方式
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node: Node | null = range.startContainer;
+        // 向上查找 p 元素
+        while (node && node.nodeName !== 'P') {
+          node = node.parentNode;
+        }
+        if (node && node.nodeName === 'P') {
+          const align = (node as HTMLElement).style.textAlign || 
+                        window.getComputedStyle(node as HTMLElement).textAlign;
+          // 将 CSS 对齐值映射为 TextAlignment
+          const alignMap: Record<string, TextAlignment> = {
+            'left': 'left',
+            'start': 'left',
+            'center': 'center',
+            'right': 'right',
+            'end': 'right',
+            'justify': 'justify',
+          };
+          setCurrentAlignment(alignMap[align] || 'left');
+        }
+      }
     }
   }, [visible, selectedText]);
 
@@ -168,7 +217,72 @@ export default function SelectionToolbar({
     });
   }, [note]);
 
-  // 格式操作按钮
+  // 编辑模式操作
+  const handleCopy = useCallback(() => {
+    if (selectedText) {
+      navigator.clipboard.writeText(selectedText).catch(() => {
+        // 回退方案
+        const textarea = document.createElement('textarea');
+        textarea.value = selectedText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      });
+      onClose();
+    }
+  }, [selectedText, onClose]);
+
+  const handleCut = useCallback(() => {
+    if (selectedText && onFormatCommand) {
+      navigator.clipboard.writeText(selectedText).catch(() => {});
+      onFormatCommand('delete');
+      onClose();
+    }
+  }, [selectedText, onFormatCommand, onClose]);
+
+  const handlePaste = useCallback(async () => {
+    if (onFormatCommand) {
+      try {
+        const text = await navigator.clipboard.readText();
+        onFormatCommand('insertText', text);
+      } catch {
+        // 剪贴板权限不足，忽略
+      }
+      onClose();
+    }
+  }, [onFormatCommand, onClose]);
+
+  const handleDelete = useCallback(() => {
+    if (onFormatCommand) {
+      onFormatCommand('delete');
+      onClose();
+    }
+  }, [onFormatCommand, onClose]);
+
+  // 格式化操作
+  const handleBold = useCallback(() => {
+    onFormatCommand?.('bold');
+    onClose();
+  }, [onFormatCommand, onClose]);
+
+  const handleItalic = useCallback(() => {
+    onFormatCommand?.('italic');
+    onClose();
+  }, [onFormatCommand, onClose]);
+
+  const handleUnderline = useCallback(() => {
+    onFormatCommand?.('underline');
+    onClose();
+  }, [onFormatCommand, onClose]);
+
+  // 段落对齐操作
+  const handleAlign = useCallback((alignment: TextAlignment) => {
+    onParagraphAlign?.(alignment);
+    onClose();
+  }, [onParagraphAlign, onClose]);
+
+  // 批注模式下的格式按钮
   const formatActions = [
     { icon: '↵', action: () => insertAtCursor('\n'), title: '插入换行' },
     { icon: '⇥', action: () => insertAtCursor('\u3000\u3000'), title: '插入首行缩进' },
@@ -187,7 +301,6 @@ export default function SelectionToolbar({
       setNote('');
       setShowNoteInput(false);
     } catch (error) {
-      // 错误已在 Reader 中处理并显示 Toast，这里只恢复状态允许重试
       console.error('批注提交失败:', error);
     } finally {
       setSubmitting(false);
@@ -198,6 +311,14 @@ export default function SelectionToolbar({
     setNote('');
     setShowNoteInput(false);
   };
+
+  // 对齐方式选项
+  const alignOptions: { value: TextAlignment; icon: typeof AlignLeft; label: string }[] = [
+    { value: 'left', icon: AlignLeft, label: '左对齐' },
+    { value: 'center', icon: AlignCenter, label: '居中' },
+    { value: 'right', icon: AlignRight, label: '右对齐' },
+    { value: 'justify', icon: AlignJustify, label: '两端对齐' },
+  ];
 
   return (
     <div
@@ -213,6 +334,7 @@ export default function SelectionToolbar({
         maxWidth: `${MAX_WIDTH}px`,
         maxHeight: `${MAX_HEIGHT}px`,
       }}
+      onMouseDown={handlePanelMouseDown}
     >
       {/* 标题栏 */}
       <div
@@ -221,7 +343,9 @@ export default function SelectionToolbar({
       >
         <div className="flex items-center gap-2">
           <GripVertical className="w-4 h-4 text-warm-400" />
-          <span className="text-sm font-medium text-warm-600">标注选中文本</span>
+          <span className="text-sm font-medium text-warm-600">
+            {isEditMode ? '编辑工具' : '标注选中文本'}
+          </span>
         </div>
         <button onClick={onClose} className="p-1 hover:bg-black/5 rounded transition-colors">
           <X className="w-4 h-4 text-warm-400" />
@@ -238,61 +362,198 @@ export default function SelectionToolbar({
         </div>
 
         <div className="p-4 space-y-3">
-          {/* 统一工具栏：高亮颜色 + 批注入口 + 格式操作 */}
-          <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5 flex-wrap">
-            {/* 高亮颜色按钮 */}
-            {colorOptions.map((color) => (
-              <button
-                key={color.value}
-                onClick={() => {
-                  if (showNoteInput) {
-                    setSelectedColor(color.value);
-                  } else {
-                    onHighlight(color.value);
-                    onClose();
-                  }
-                }}
-                className={`w-6 h-6 rounded-full border-2 transition-all shrink-0 ${
-                  selectedColor === color.value ? 'scale-110 shadow-md' : 'opacity-60 hover:opacity-100'
-                }`}
-                style={{
-                  backgroundColor: color.bg,
-                  borderColor: selectedColor === color.value ? color.border : 'transparent',
-                }}
-                title={showNoteInput ? `批注颜色：${color.label}` : `高亮为${color.label}`}
-              />
-            ))}
-
-            <div className="w-px h-5 bg-black/10 mx-0.5 shrink-0" />
-
-            {/* 批注按钮 */}
-            <button
-              onClick={() => setShowNoteInput(true)}
-              className={`px-1.5 py-0.5 text-xs rounded transition-all shrink-0 ${
-                showNoteInput ? 'bg-white shadow-sm text-warm-600' : 'text-warm-400 hover:bg-white hover:shadow-sm'
-              }`}
-              title="添加批注"
-            >
-              <MessageSquarePlus className="w-3.5 h-3.5" />
-            </button>
-
-            {/* 批注模式下的格式按钮 */}
-            {showNoteInput && (
-              <>
-                <div className="w-px h-5 bg-black/10 mx-0.5 shrink-0" />
-                {formatActions.map((item, idx) => (
+          {/* 编辑模式工具栏 */}
+          {isEditMode && (
+            <>
+              {/* 文本操作：复制、剪切、粘贴、删除 */}
+              <div>
+                <label className="text-xs text-warm-400 mb-1.5 block">文本操作</label>
+                <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5">
                   <button
-                    key={idx}
-                    onClick={item.action}
-                    className="px-1.5 py-0.5 text-xs text-warm-500 hover:bg-white hover:shadow-sm rounded transition-all shrink-0"
-                    title={item.title}
+                    onClick={handleCopy}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all"
+                    title="复制"
                   >
-                    {item.icon}
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>复制</span>
                   </button>
+                  <button
+                    onClick={handleCut}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all"
+                    title="剪切"
+                  >
+                    <Scissors className="w-3.5 h-3.5" />
+                    <span>剪切</span>
+                  </button>
+                  <button
+                    onClick={handlePaste}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all"
+                    title="粘贴"
+                  >
+                    <Clipboard className="w-3.5 h-3.5" />
+                    <span>粘贴</span>
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-500 hover:bg-white hover:shadow-sm rounded transition-all"
+                    title="删除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>删除</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 文本格式化：加粗、斜体、下划线 */}
+              <div>
+                <label className="text-xs text-warm-400 mb-1.5 block">文本格式</label>
+                <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5">
+                  <button
+                    onClick={handleBold}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all font-bold"
+                    title="加粗 (Ctrl+B)"
+                  >
+                    <Bold className="w-3.5 h-3.5" />
+                    <span>加粗</span>
+                  </button>
+                  <button
+                    onClick={handleItalic}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all italic"
+                    title="斜体 (Ctrl+I)"
+                  >
+                    <Italic className="w-3.5 h-3.5" />
+                    <span>斜体</span>
+                  </button>
+                  <button
+                    onClick={handleUnderline}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-warm-600 hover:bg-white hover:shadow-sm rounded transition-all underline"
+                    title="下划线 (Ctrl+U)"
+                  >
+                    <Underline className="w-3.5 h-3.5" />
+                    <span>下划线</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 段落对齐 */}
+              <div>
+                <label className="text-xs text-warm-400 mb-1.5 block">段落对齐</label>
+                <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5">
+                  {alignOptions.map((opt) => {
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleAlign(opt.value)}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded transition-all ${
+                          currentAlignment === opt.value
+                            ? 'bg-white shadow-sm text-warm-700'
+                            : 'text-warm-500 hover:bg-white hover:shadow-sm'
+                        }`}
+                        title={opt.label}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* 非编辑模式或编辑模式下都显示高亮功能 */}
+          {!isEditMode && (
+            <>
+              {/* 统一工具栏：高亮颜色 + 批注入口 + 格式操作 */}
+              <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5 flex-wrap">
+                {/* 高亮颜色按钮 */}
+                {colorOptions.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => {
+                      if (showNoteInput) {
+                        setSelectedColor(color.value);
+                      } else {
+                        onHighlight(color.value);
+                        onClose();
+                      }
+                    }}
+                    className={`w-6 h-6 rounded-full border-2 transition-all shrink-0 ${
+                      selectedColor === color.value ? 'scale-110 shadow-md' : 'opacity-60 hover:opacity-100'
+                    }`}
+                    style={{
+                      backgroundColor: color.bg,
+                      borderColor: selectedColor === color.value ? color.border : 'transparent',
+                    }}
+                    title={showNoteInput ? `批注颜色：${color.label}` : `高亮为${color.label}`}
+                  />
                 ))}
-              </>
-            )}
-          </div>
+
+                <div className="w-px h-5 bg-black/10 mx-0.5 shrink-0" />
+
+                {/* 批注按钮 */}
+                <button
+                  onClick={() => setShowNoteInput(true)}
+                  className={`px-1.5 py-0.5 text-xs rounded transition-all shrink-0 ${
+                    showNoteInput ? 'bg-white shadow-sm text-warm-600' : 'text-warm-400 hover:bg-white hover:shadow-sm'
+                  }`}
+                  title="添加批注"
+                >
+                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                </button>
+
+                {/* 批注模式下的格式按钮 */}
+                {showNoteInput && (
+                  <>
+                    <div className="w-px h-5 bg-black/10 mx-0.5 shrink-0" />
+                    {formatActions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        onClick={item.action}
+                        className="px-1.5 py-0.5 text-xs text-warm-500 hover:bg-white hover:shadow-sm rounded transition-all shrink-0"
+                        title={item.title}
+                      >
+                        {item.icon}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* 编辑模式下也显示高亮功能 */}
+          {isEditMode && (
+            <div>
+              <label className="text-xs text-warm-400 mb-1.5 block">高亮标注</label>
+              <div className="flex items-center gap-1 p-1.5 bg-warm-50 rounded-lg border border-black/5 flex-wrap">
+                {colorOptions.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => {
+                      onHighlight(color.value);
+                      onClose();
+                    }}
+                    className={`w-6 h-6 rounded-full border-2 transition-all shrink-0 opacity-60 hover:opacity-100`}
+                    style={{
+                      backgroundColor: color.bg,
+                      borderColor: 'transparent',
+                    }}
+                    title={`高亮为${color.label}`}
+                  />
+                ))}
+                <div className="w-px h-5 bg-black/10 mx-0.5 shrink-0" />
+                <button
+                  onClick={() => setShowNoteInput(true)}
+                  className="px-1.5 py-0.5 text-xs text-warm-400 hover:bg-white hover:shadow-sm rounded transition-all shrink-0"
+                  title="添加批注"
+                >
+                  <MessageSquarePlus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 批注输入 */}
           {showNoteInput && (

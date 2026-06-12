@@ -1,7 +1,11 @@
-import { BookOpen, Upload } from 'lucide-react';
+import { BookOpen, Upload, FilePlus } from 'lucide-react';
 import { useBookImport } from '@/hooks/useBookImport';
 
-export default function EmptyState() {
+interface EmptyStateProps {
+  onCreateNew?: () => void;
+}
+
+export default function EmptyState({ onCreateNew }: EmptyStateProps) {
   const { importFromFilePicker } = useBookImport();
 
   return (
@@ -28,15 +32,28 @@ export default function EmptyState() {
         </div>
 
         {/* 按钮 */}
-        <button
-          onClick={importFromFilePicker}
-          className="flex items-center gap-2 px-6 py-2.5 bg-warm-400 text-white text-sm font-medium
-                     rounded-lg hover:bg-warm-500 shadow-sm hover:shadow-md
-                     transition-all duration-200 hover:-translate-y-0.5"
-        >
-          <Upload className="w-4 h-4" />
-          <span>选择文件导入</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {onCreateNew && (
+            <button
+              onClick={onCreateNew}
+              className="flex items-center gap-2 px-6 py-2.5 bg-white text-warm-600 text-sm font-medium
+                         rounded-lg border border-warm-300 hover:bg-warm-50 hover:border-warm-400
+                         shadow-sm transition-all duration-200"
+            >
+              <FilePlus className="w-4 h-4" />
+              <span>新建 TXT</span>
+            </button>
+          )}
+          <button
+            onClick={importFromFilePicker}
+            className="flex items-center gap-2 px-6 py-2.5 bg-warm-400 text-white text-sm font-medium
+                       rounded-lg hover:bg-warm-500 shadow-sm hover:shadow-md
+                       transition-all duration-200 hover:-translate-y-0.5"
+          >
+            <Upload className="w-4 h-4" />
+            <span>选择文件导入</span>
+          </button>
+        </div>
       </div>
     </div>
   );

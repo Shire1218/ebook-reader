@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHand
 import type { Book, Highlight, HighlightColor } from '@/types';
 import { getBookFile } from '@/utils/db';
 import { decodeTxtBuffer, splitIntoChapters, textToHtml, textToHtmlWithHighlights, textToHtmlWithSearch } from '@/utils/txtParser';
-import type { TxtChapter } from '@/utils/txtParser';
+import type { TxtChapter, ParagraphFormat } from '@/utils/txtParser';
 
 export interface TxtReaderRef {
   goToChapter: (index: number) => void;
@@ -10,6 +10,11 @@ export interface TxtReaderRef {
   scrollToHighlight: (highlightId: string) => void;
   getChaptersText: () => string[];
   scrollToSearchMatch: (matchIndex: number) => void;
+  // 编辑模式方法
+  getEditedContent: () => string;  // 获取当前编辑后的 HTML
+  getCurrentChapterIndex: () => number;  // 获取当前章节索引
+  isDirty: () => boolean;          // 是否有未保存的修改
+  reloadChapter: () => void;       // 重新加载当前章节（丢弃编辑）
 }
 
 interface TxtReaderProps {
@@ -21,9 +26,14 @@ interface TxtReaderProps {
   onLocationChange: (location: string, progress: number, chapterName?: string) => void;
   onTocLoaded: (toc: { label: string; href: string }[]) => void;
   highlights: Highlight[];
-  onTextSelected: (selection: { text: string; position: { x: number; y: number } }) => void;
+  onTextSelected: (selection: { text: string; position: { x: number; y: number }; paragraphIndex?: number; offsetInParagraph?: number }) => void;
   onHighlightClick: (highlight: Highlight, position?: { x: number; y: number }) => void;
   searchQuery?: string;
+  // 编辑模式
+  isEditMode?: boolean;
+  // 段落格式
+  textAlignment?: string;
+  paragraphSpacing?: number;
 }
 
 // 主题颜色映射
@@ -46,14 +56,25 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
   onTextSelected,
   onHighlightClick,
   searchQuery,
+  isEditMode = false,
+  textAlignment = 'justify',
+  paragraphSpacing = 0.8,
 }, ref) {
   const [chapters, setChapters] = useState<TxtChapter[]>([]);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const isRestoringRef = useRef(false);
+  const dirtyRef = useRef(false);  // 跟踪是否有未保存的编辑
 
-  // 暴露跳转方法给父组件
+  // 段落格式参数
+  const paraFormat: ParagraphFormat = {
+    alignment: textAlignment,
+    spacing: paragraphSpacing,
+  };
+
+  // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
     goToChapter: (index: number) => {
       if (index >= 0 && index < chapters.length) {
@@ -71,11 +92,9 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
       }
     },
     scrollToHighlight: (highlightId: string) => {
-      // 查找高亮元素并滚动到该位置
       const highlightEl = containerRef.current?.querySelector(`[data-highlight-id="${highlightId}"]`);
       if (highlightEl) {
         highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // 添加短暂高亮闪烁效果
         const el = highlightEl as HTMLElement;
         const originalBoxShadow = el.style.boxShadow;
         el.style.boxShadow = '0 0 0 3px rgba(245, 158, 11, 0.5)';
@@ -84,21 +103,37 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
         }, 1500);
       }
     },
-    // 获取所有章节文本（用于搜索索引）
     getChaptersText: () => {
       return chapters.map((ch) => ch.content);
     },
-    // 滚动到指定搜索匹配项
     scrollToSearchMatch: (matchIndex: number) => {
       const marks = containerRef.current?.querySelectorAll('mark.search-match');
       if (marks && marks.length > matchIndex) {
         const mark = marks[matchIndex] as HTMLElement;
         mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // 闪烁效果
         mark.classList.add('search-match-active');
         setTimeout(() => {
           mark.classList.remove('search-match-active');
         }, 2000);
+      }
+    },
+    // 获取当前编辑后的 HTML 内容
+    getEditedContent: () => {
+      return contentRef.current?.innerHTML || '';
+    },
+    // 获取当前章节索引
+    getCurrentChapterIndex: () => {
+      return chapterIndex;
+    },
+    // 是否有未保存的修改
+    isDirty: () => {
+      return dirtyRef.current;
+    },
+    // 重新加载当前章节（丢弃编辑）
+    reloadChapter: () => {
+      if (contentRef.current && currentChapter) {
+        contentRef.current.innerHTML = textToHtml(currentChapter.content, paraFormat);
+        dirtyRef.current = false;
       }
     },
   }));
@@ -116,7 +151,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
       const parsedChapters = splitIntoChapters(text);
       setChapters(parsedChapters);
 
-      // 通知目录
       const tocItems = parsedChapters.map((ch, idx) => ({
         label: ch.title,
         href: `chapter-${idx}`,
@@ -139,7 +173,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
       setChapterIndex(savedChapter);
       setIsLoading(false);
 
-      // 恢复滚动位置（需要等 DOM 渲染完成）
       if (savedScrollRatio > 0) {
         isRestoringRef.current = true;
         requestAnimationFrame(() => {
@@ -160,12 +193,12 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     loadTxt();
   }, [book.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 章节变化时滚动到顶部，并立即通知父组件保存进度
+  // 章节变化时滚动到顶部，并重置 dirty 状态
   useEffect(() => {
     if (!isRestoringRef.current) {
       containerRef.current?.scrollTo(0, 0);
     }
-    // 章节切换后立即通知父组件保存进度（键盘切换章节时滚动事件可能丢失）
+    dirtyRef.current = false;  // 切换章节时重置 dirty 状态
     if (chapters.length > 0 && !isRestoringRef.current) {
       const totalChars = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
       const readChars = chapters.slice(0, chapterIndex).reduce((sum, ch) => sum + ch.content.length, 0);
@@ -176,7 +209,7 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     }
   }, [chapterIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 滚动时计算进度并通知父组件
+  // 滚动时计算进度
   const handleScroll = useCallback(() => {
     if (chapters.length === 0 || isRestoringRef.current) return;
 
@@ -186,7 +219,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     const maxScroll = el.scrollHeight - el.clientHeight;
     const scrollRatio = maxScroll > 0 ? el.scrollTop / maxScroll : 0;
 
-    // 计算总进度
     let totalChars = 0;
     let readChars = 0;
     for (let i = 0; i < chapters.length; i++) {
@@ -206,7 +238,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     onLocationChange(location, progress, chapterName);
   }, [chapterIndex, chapters, onLocationChange]);
 
-  // 用节流控制滚动回调频率
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -226,33 +257,31 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     return () => el.removeEventListener('scroll', onScroll);
   }, [handleScroll]);
 
-  // 键盘事件：上下方向键滚动，左右切换章节
+  // 键盘事件
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (isEditMode) return;
+
       const el = containerRef.current;
       if (!el) return;
 
       if (e.key === 'ArrowDown') {
-        // 向下滚动一屏
         e.preventDefault();
         el.scrollBy({ top: el.clientHeight * 0.8, behavior: 'smooth' });
       } else if (e.key === 'ArrowUp') {
-        // 向上滚动一屏
         e.preventDefault();
         el.scrollBy({ top: -el.clientHeight * 0.8, behavior: 'smooth' });
-      } else if (e.key === 'PageDown' || e.key === ' ') {
+      } else if (e.key === 'PageDown') {
         e.preventDefault();
         el.scrollBy({ top: el.clientHeight * 0.9, behavior: 'smooth' });
       } else if (e.key === 'PageUp') {
         e.preventDefault();
         el.scrollBy({ top: -el.clientHeight * 0.9, behavior: 'smooth' });
       } else if (e.key === 'ArrowRight') {
-        // 下一章
         if (chapterIndex < chapters.length - 1) {
           setChapterIndex((c) => c + 1);
         }
       } else if (e.key === 'ArrowLeft') {
-        // 上一章
         if (chapterIndex > 0) {
           setChapterIndex((c) => c - 1);
         }
@@ -260,7 +289,7 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [chapterIndex, chapters.length]);
+  }, [chapterIndex, chapters.length, isEditMode]);
 
   // 监听文本选择
   useEffect(() => {
@@ -276,7 +305,43 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
           y: rect.top,
         };
 
-        onTextSelected({ text, position });
+        // 计算选中文本在段落中的精确位置
+        let paragraphIndex: number | undefined;
+        let offsetInParagraph: number | undefined;
+
+        const container = contentRef.current;
+        if (container) {
+          const paragraphs = container.querySelectorAll('p');
+          const startNode = range.startContainer;
+          // 找到选区起点所在的 <p> 元素
+          let pNode: Node | null = startNode;
+          while (pNode && pNode !== container && pNode.nodeName !== 'P') {
+            pNode = pNode.parentNode;
+          }
+          if (pNode && pNode.nodeName === 'P') {
+            // 计算段落索引
+            for (let i = 0; i < paragraphs.length; i++) {
+              if (paragraphs[i] === pNode) {
+                paragraphIndex = i;
+                break;
+              }
+            }
+            // 计算在段落文本中的偏移
+            const pText = (pNode as HTMLElement).textContent || '';
+            // 创建一个临时 range 来计算偏移
+            const tempRange = document.createRange();
+            tempRange.setStart(pNode, 0);
+            tempRange.setEnd(startNode, range.startOffset);
+            offsetInParagraph = tempRange.toString().length;
+            tempRange.detach();
+            // 确保偏移不超过段落长度
+            if (offsetInParagraph > pText.length) {
+              offsetInParagraph = pText.length;
+            }
+          }
+        }
+
+        onTextSelected({ text, position, paragraphIndex, offsetInParagraph });
       }
     }
 
@@ -294,16 +359,13 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
       const totalChars = chapters.reduce((sum, ch) => sum + ch.content.length, 0);
       const targetChars = (targetProgress / 100) * totalChars;
 
-      // 找到目标章节
       let accChars = 0;
       for (let i = 0; i < chapters.length; i++) {
         const ch = chapters[i]!;
         if (accChars + ch.content.length >= targetChars) {
           setChapterIndex(i);
-          // 计算章节内滚动比例
           const chapterOffset = targetChars - accChars;
           const scrollRatio = ch.content.length > 0 ? chapterOffset / ch.content.length : 0;
-          // 等待渲染后滚动
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               if (containerRef.current) {
@@ -323,10 +385,24 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     return () => window.removeEventListener('reader-seek', handleSeek);
   }, [chapters]);
 
+  // 编辑模式下，监听内容变化标记 dirty
+  useEffect(() => {
+    if (!isEditMode || !contentRef.current) return;
+
+    const el = contentRef.current;
+    function handleInput() {
+      dirtyRef.current = true;
+    }
+
+    el.addEventListener('input', handleInput);
+    return () => {
+      el.removeEventListener('input', handleInput);
+    };
+  }, [isEditMode]);
+
   const colors = themeColors[theme] ?? themeColors.light!;
   const currentChapter = chapters[chapterIndex];
 
-  // 高亮颜色映射
   const colorMap: Record<HighlightColor, string> = {
     yellow: '#FEF3C7',
     green: '#D1FAE5',
@@ -335,28 +411,35 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
     purple: '#EDE9FE',
   };
 
-  // 渲染带高亮的章节内容
-  const renderContentWithHighlights = (content: string) => {
-    // 如果有搜索词，优先显示搜索高亮
+  // 渲染章节内容
+  const renderContent = () => {
+    if (!currentChapter) return '';
+
     if (searchQuery?.trim()) {
-      return textToHtmlWithSearch(content, searchQuery);
+      return textToHtmlWithSearch(currentChapter.content, searchQuery, paraFormat);
     }
 
-    // 获取当前章节的高亮，转换为 HighlightInfo 格式
+    // 编辑模式下跳过批注渲染，防止 contentEditable DOM 被重置导致编辑状态丢失
+    if (isEditMode) {
+      return textToHtml(currentChapter.content, paraFormat);
+    }
+
     const chapterHighlights = highlights
-      .filter((h) => h.chapter === currentChapter?.title)
+      .filter((h) => h.chapter === currentChapter.title)
       .map((h) => ({
         text: h.text,
         color: colorMap[h.color],
         id: h.id,
         hasNote: !!h.note,
+        paragraphIndex: h.paragraphIndex,
+        offsetInParagraph: h.offsetInParagraph,
       }));
 
     if (chapterHighlights.length === 0) {
-      return textToHtml(content);
+      return textToHtml(currentChapter.content, paraFormat);
     }
 
-    return textToHtmlWithHighlights(content, chapterHighlights);
+    return textToHtmlWithHighlights(currentChapter.content, chapterHighlights, paraFormat);
   };
 
   if (isLoading) {
@@ -393,7 +476,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
           color: colors.text,
         }}
       >
-        {/* 章节标题 */}
         {currentChapter.title !== '正文' && (
           <h2
             className="text-center font-serif font-bold mb-8"
@@ -403,13 +485,26 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
           </h2>
         )}
 
-        {/* 章节完整内容 */}
+        {isEditMode && (
+          <div className="mb-4 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-600 text-center">
+            编辑模式 - 点击文本区域即可编辑内容
+          </div>
+        )}
+
         <div
+          ref={contentRef}
           className="txt-content"
-          dangerouslySetInnerHTML={{ __html: renderContentWithHighlights(currentChapter.content) }}
+          contentEditable={isEditMode}
+          suppressContentEditableWarning
+          dangerouslySetInnerHTML={{ __html: renderContent() }}
+          style={isEditMode ? {
+            outline: 'none',
+            cursor: 'text',
+            minHeight: '200px',
+          } : undefined}
           onClick={(e) => {
             const target = e.target as HTMLElement;
-            if (target.classList.contains('highlight-mark')) {
+            if (!isEditMode && target.classList.contains('highlight-mark')) {
               const highlightId = target.getAttribute('data-highlight-id');
               const highlight = highlights.find((h) => h.id === highlightId);
               if (highlight) {
@@ -420,7 +515,6 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
           }}
         />
 
-        {/* 章节末尾导航 */}
         <div className="flex items-center justify-between mt-16 pt-8 border-t border-current/10 opacity-40">
           <button
             onClick={() => chapterIndex > 0 && setChapterIndex((c) => c - 1)}

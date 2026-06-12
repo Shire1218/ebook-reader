@@ -3,8 +3,8 @@ import { usePreferenceStore } from '@/stores/preferenceStore';
 
 export default function Settings() {
   const {
-    fontFamily, fontSize, lineHeight, theme, brightness,
-    setFontFamily, setFontSize, setLineHeight, setTheme, setBrightness,
+    fontFamily, fontSize, lineHeight, theme, brightness, textAlignment, paragraphSpacing,
+    setFontFamily, setFontSize, setLineHeight, setTheme, setBrightness, setTextAlignment, setParagraphSpacing,
     resetPreferences,
   } = usePreferenceStore();
 
@@ -40,8 +40,10 @@ export default function Settings() {
           style={{ backgroundColor: preview.bg, color: preview.text }}
         >
           <h3 className="font-serif text-lg mb-3">预览效果</h3>
-          <p style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily }}>
+          <p style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily, textAlign: textAlignment, margin: `${paragraphSpacing}em 0` }}>
             这是一段预览文字。书卷多情似故人，晨昏忧乐每相亲。
+          </p>
+          <p style={{ fontSize: `${fontSize}px`, lineHeight, fontFamily, textAlign: textAlignment, margin: `${paragraphSpacing}em 0` }}>
             眼前直下三千字，胸次全无一点尘。
           </p>
         </div>
@@ -113,6 +115,55 @@ export default function Settings() {
             <div className="flex justify-between text-xs text-warm-300 mt-1">
               <span>1.0</span>
               <span>3.0</span>
+            </div>
+          </div>
+        </section>
+
+        {/* 段落格式 */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-medium text-warm-800 border-b border-warm-200 pb-2">段落格式</h2>
+
+          <div>
+            <label className="text-xs text-warm-400 mb-2 flex items-center justify-between">
+              <span>段间距</span>
+              <span className="tabular-nums text-warm-600">{paragraphSpacing.toFixed(1)}em</span>
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={3.0}
+              step={0.1}
+              value={paragraphSpacing}
+              onChange={(e) => setParagraphSpacing(Number(e.target.value))}
+              className="w-full accent-warm-400"
+            />
+            <div className="flex justify-between text-xs text-warm-300 mt-1">
+              <span>紧凑</span>
+              <span>宽松</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-warm-400 mb-2 block">文本对齐</label>
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: '左对齐', value: 'left' as const },
+                { label: '居中', value: 'center' as const },
+                { label: '右对齐', value: 'right' as const },
+                { label: '两端对齐', value: 'justify' as const },
+              ].map((align) => (
+                <button
+                  key={align.value}
+                  onClick={() => setTextAlignment(align.value)}
+                  className={`px-4 py-3 text-sm rounded-xl border transition-all ${
+                    textAlignment === align.value
+                      ? 'border-warm-400 bg-warm-400/10 text-warm-800'
+                      : 'border-warm-200 hover:border-warm-300 text-warm-600'
+                  }`}
+                >
+                  {align.label}
+                </button>
+              ))}
             </div>
           </div>
         </section>
@@ -228,7 +279,6 @@ export default function Settings() {
                 {[
                   { keys: ['↑'], desc: '向上滚动' },
                   { keys: ['↓'], desc: '向下滚动' },
-                  { keys: ['Space'], desc: '向下翻屏' },
                 ].map((item) => (
                   <div key={item.keys[0]} className="flex items-center justify-between py-1.5">
                     <span className="text-sm text-warm-500">{item.desc}</span>
@@ -256,7 +306,7 @@ export default function Settings() {
             </div>
             <div className="flex justify-between">
               <span>版本</span>
-              <span className="text-warm-600">v0.4.0 (P4)</span>
+              <span className="text-warm-600">v0.5.0 (P5)</span>
             </div>
             <div className="flex justify-between">
               <span>技术栈</span>

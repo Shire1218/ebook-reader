@@ -1,7 +1,7 @@
 import type { Book, ReadingPreference, Bookmark, Highlight } from '@/types';
 
 const DB_NAME = 'ebook-reader-db';
-const DB_VERSION = 7;
+const DB_VERSION = 9;
 const BOOKS_STORE = 'books';
 const PREFERENCES_STORE = 'preferences';
 const FILES_STORE = 'files';
@@ -35,6 +35,10 @@ function openDB(): Promise<IDBDatabase> {
         const highlightStore = db.createObjectStore(HIGHLIGHTS_STORE, { keyPath: 'id' });
         highlightStore.createIndex('bookId', 'bookId', { unique: false });
         highlightStore.createIndex('createdAt', 'createdAt', { unique: false });
+      }
+      // 删除旧的 textEdits 存储（如果存在）
+      if (db.objectStoreNames.contains('textEdits')) {
+        db.deleteObjectStore('textEdits');
       }
     };
 
