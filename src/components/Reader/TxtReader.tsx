@@ -7,6 +7,7 @@ import type { TxtChapter } from '@/utils/txtParser';
 export interface TxtReaderRef {
   goToChapter: (index: number) => void;
   goToLocation: (location: string) => void;
+  scrollToHighlight: (highlightId: string) => void;
 }
 
 interface TxtReaderProps {
@@ -63,6 +64,20 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
         }
       } catch {
         // 解析失败忽略
+      }
+    },
+    scrollToHighlight: (highlightId: string) => {
+      // 查找高亮元素并滚动到该位置
+      const highlightEl = containerRef.current?.querySelector(`[data-highlight-id="${highlightId}"]`);
+      if (highlightEl) {
+        highlightEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 添加短暂高亮闪烁效果
+        const el = highlightEl as HTMLElement;
+        const originalBoxShadow = el.style.boxShadow;
+        el.style.boxShadow = '0 0 0 3px rgba(245, 158, 11, 0.5)';
+        setTimeout(() => {
+          el.style.boxShadow = originalBoxShadow;
+        }, 1500);
       }
     },
   }));

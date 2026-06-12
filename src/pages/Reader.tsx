@@ -266,6 +266,38 @@ export default function Reader() {
     }
   }, [showToast]);
 
+  // 点击标注记录定位到文章位置
+  const handleHighlightNavigate = useCallback((highlight: Highlight) => {
+    if (book?.format === 'epub') {
+      // EPUB: 使用 CFI range 定位
+      epubReaderRef.current?.goToLocation(highlight.location);
+    } else if (book?.format === 'txt') {
+      // TXT: 先跳转到对应章节，然后滚动到高亮位置
+      try {
+        const loc = JSON.parse(highlight.location);
+        if (typeof loc.chapter === 'number') {
+          txtReaderRef.current?.goToChapter(loc.chapter);
+          // 等待章节渲染完成后滚动到高亮位置
+          setTimeout(() => {
+            txtReaderRef.current?.scrollToHighlight(highlight.id);
+          }, 100);
+        }
+      } catch {
+        // 解析失败忽略
+      }
+    } else if (book?.format === 'pdf') {
+      // PDF: 解析位置信息跳转页面
+      try {
+        const loc = JSON.parse(highlight.location);
+        if (typeof loc.page === 'number') {
+          pdfReaderRef.current?.goToPage(loc.page);
+        }
+      } catch {
+        // 解析失败忽略
+      }
+    }
+  }, [book?.format]);
+
   // 点击弹窗外部关闭
   useEffect(() => {
     if (!highlightPopover) return;
@@ -596,7 +628,8 @@ export default function Reader() {
                   return (
                     <div
                       key={highlight.id}
-                      className="p-3 rounded-lg bg-white/50 border border-black/5 group"
+                      className="p-3 rounded-lg bg-white/50 border border-black/5 group cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => handleHighlightNavigate(highlight)}
                     >
                       {/* 高亮文本 */}
                       <div
@@ -617,7 +650,10 @@ export default function Reader() {
                       <div className="flex items-center justify-between text-xs opacity-50">
                         <span className="truncate">{highlight.chapter}</span>
                         <button
-                          onClick={() => handleDeleteHighlight(highlight.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteHighlight(highlight.id);
+                          }}
                           className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
                           title="删除标注"
                         >
