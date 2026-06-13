@@ -1,0 +1,120 @@
+# 一、测试 对应的英文单词
+**test** /test/（最通用，读音：/test/）
+- 动词/名词：测试、检验
+- 常用衍生：
+  - **testing**：测试（动名词，侧重测试行为/流程）
+  - **tester**：测试人员
+  - **test case**：测试用例
+  - **test suite**：测试套件
+
+---
+
+# 二、编程领域 测试文件夹/目录 命名规范（按行业流行度排序）
+分**通用规范、细分场景、国际主流约定**，直接照着用即可。
+
+## 1. 全局通用（90% 项目首选，简单直白）
+### ① `test` / `tests`（最标准、使用最多）
+- 单数 **test**：中小型项目、小程序、前端、脚本项目常用
+- 复数 **tests**：中大型项目、多测试文件/用例，更推荐（语义：多个测试）
+```
+project/
+├── src/        # 源码
+├── tests/      # 所有测试代码、测试用例
+```
+
+### ② `__tests__`（前端/React/Vue/Node.js 生态标配）
+Jest、Vue Test Utils、React 社区**强制/习惯命名**，前后双下划线，约定俗成。
+```
+src/
+└── components/
+    └── Button/
+        ├── Button.js
+        └── __tests__/   # 组件对应测试目录
+```
+
+## 2. 按测试类型细分（大型项目、后端、工程化项目）
+区分**单元测试、集成测试、E2E 端到端测试**，目录分层：
+- **unit** / **unit-test**：单元测试
+- **integration** / **integration-test**：集成测试
+- **e2e** / **end-to-end**：端到端测试（UI/全流程）
+- **spec** / **specs**：偏「规格测试/断言测试」（日系/Angular/Go 常用）
+
+示例分层结构：
+```
+project/
+├── src/
+├── tests/
+│   ├── unit/        # 单元测试
+│   ├── integration/ # 集成测试
+│   └── e2e/         # 端到端测试
+```
+
+## 3. 不同语言/框架专属习惯
+### 前端（JS/TS/Vue/React/小程序）
+1. 全局测试目录：`tests`
+2. 就近组件测试：`__tests__`
+3. 单文件测试后缀：`xxx.test.js` / `xxx.spec.js`
+
+### Java / Spring Boot
+- `test`（Maven/Gradle 标准目录，**框架固定约定**）
+```
+src/
+├── main/    # 业务源码
+└── test/    # 测试代码（官方标准）
+```
+
+### Go 语言
+- 一般不单独建大目录，同目录下 `xxx_test.go` 文件；
+- 集中测试目录也用：`tests`
+
+### Python
+- 标准：`tests` / `test`
+- 包级测试：`tests/` + `conftest.py`（pytest 规范）
+
+## 4. 小众但常用命名
+- **spec** / **specs**：强调「代码规格、接口断言」，Angular、Ruby、Node 老项目多见
+- **qa**：QA 自动化测试目录（偏向测试团队自动化脚本）
+- **automation**：自动化测试专用目录
+
+---
+
+# 三、快速选型建议（直接抄作业）
+1. **个人项目、小程序、简单前后端**
+   → 用 **`tests`**（首选）或 `test`
+2. **Vue/React/Node 项目，使用 Jest 测试框架**
+   → 全局 `tests`，组件旁建 **`__tests__`**
+3. **Java 项目**
+   → 遵守框架默认：`src/test`（不要改）
+4. **大型团队、需要区分测试类型**
+   → 主目录 `tests`，内部分 `unit` / `e2e` / `integration`
+5. **写接口/接口自动化测试**
+   → 可单独建 `api-test` 或放在 `tests/api`
+
+---
+
+# 补充示例（完整目录结构参考）
+### 示例1：普通前端/uni-app 项目（最常用）
+```
+project/
+├── src/
+├── static/
+└── tests/       # 测试文件夹
+```
+
+### 示例2：React/Vue + Jest
+```
+src/
+├── Home.vue
+└── components/
+    └── Card/
+        ├── Card.vue
+        └── __tests__/
+            └── Card.test.js
+```
+
+### 示例3：Java 标准结构
+```
+src/
+├── main/java/
+└── test/java/   # 测试目录（Maven 固定）
+```

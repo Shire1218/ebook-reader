@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Book, SortBy } from '@/types';
 import { getAllBooks, addBook as dbAddBook, updateBook as dbUpdateBook, deleteBook as dbDeleteBook } from '@/utils/db';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api';
+import { useAuthStore } from '@/stores/authStore';
 
 interface BookState {
   books: Book[];
@@ -18,8 +20,12 @@ interface BookState {
   setSortBy: (sortBy: SortBy) => void;
   setCategoryFilter: (category: string) => void;
   deleteCategory: (category: string) => Promise<void>;
-  getFilteredBooks: () => Book[];
   getCategories: () => string[];
+  getFilteredBooks: () => Book[];
+}
+
+function isCloudMode(): boolean {
+  return useAuthStore.getState().isAuthenticated;
 }
 
 export const useBookStore = create<BookState>((set, get) => ({
@@ -32,7 +38,13 @@ export const useBookStore = create<BookState>((set, get) => ({
   loadBooks: async () => {
     set({ isLoading: true });
     try {
-      const books = await getAllBooks();
+      let books: Book[];
+      if (isCloudMode()) {
+        const result = await apiGet<{ books: Book[] }>('/api/books');
+        books = result.books;
+      } else {
+        books = await getAllBooks();
+      }
       set({ books, isLoading: false });
     } catch {
       set({ isLoading: false });
@@ -40,11 +52,33 @@ export const useBookStore = create<BookState>((set, get) => ({
   },
 
   addBook: async (book: Book) => {
+    if (isCloudMode()) {
+      try {
+        await apiPost<{ book: Book }>('/api/books', { book: JSON.stringify(book) });
+      } catch {
+        // 云端失败不阻塞本地
+      }
+    }
     await dbAddBook(book);
     set((state) => ({ books: [...state.books, book] }));
   },
 
   updateBook: async (book: Book) => {
+    if (isCloudMode()) {
+      try {
+        await apiPut(`/api/books/${book.id}`, {
+          progress: book.progress,
+          currentLocation: book.currentLocation,
+          currentChapter: book.currentChapter,
+          category: book.category,
+          lastReadTime: book.lastReadTime,
+          title: book.title,
+          author: book.author,
+        });
+      } catch {
+        // 云端失败不阻塞本地
+      }
+    }
     await dbUpdateBook(book);
     set((state) => ({
       books: state.books.map((b) => (b.id === book.id ? book : b)),
@@ -52,6 +86,13 @@ export const useBookStore = create<BookState>((set, get) => ({
   },
 
   removeBook: async (id: string) => {
+    if (isCloudMode()) {
+      try {
+        await apiDelete(`/api/books/${id}`);
+      } catch {
+        // 云端失败不阻塞本地
+      }
+    }
     await dbDeleteBook(id);
     set((state) => ({ books: state.books.filter((b) => b.id !== id) }));
   },
@@ -74,6 +115,11 @@ export const useBookStore = create<BookState>((set, get) => ({
     for (const book of affected) {
       const updated = { ...book, category: '' };
       await dbUpdateBook(updated);
+      if (isCloudMode()) {
+        try {
+          await apiPut(`/api/books/${book.id}`, { category: '' });
+        } catch { /* ignore */ }
+      }
     }
     set((state) => ({
       books: state.books.map((b) => (b.category === category ? { ...b, category: '' } : b)),

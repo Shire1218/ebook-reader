@@ -158,11 +158,19 @@ export interface ParagraphFormat {
 
 // 将纯文本段落转为带缩进的 HTML
 export function textToHtml(text: string, format?: ParagraphFormat): string {
-  const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  // 按单个换行符分割，保留空行结构
+  const paragraphs = text.split('\n');
   const align = format?.alignment || 'justify';
   const spacing = format?.spacing ?? 0.8;
   return paragraphs
-    .map((p) => `<p style="text-indent:2em;margin:${spacing}em 0;text-align:${align};">${escapeHtml(p.trim())}</p>`)
+    .map((p) => {
+      const trimmed = p.trim();
+      // 空行渲染为带高度的空段落，保持视觉间距
+      if (!trimmed) {
+        return `<p style="margin:${spacing}em 0;text-align:${align};min-height:1em;">&nbsp;</p>`;
+      }
+      return `<p style="text-indent:2em;margin:${spacing}em 0;text-align:${align};">${escapeHtml(trimmed)}</p>`;
+    })
     .join('');
 }
 
@@ -178,13 +186,18 @@ interface HighlightInfo {
 
 // 将纯文本段落转为带高亮的 HTML
 export function textToHtmlWithHighlights(text: string, highlights: HighlightInfo[], format?: ParagraphFormat): string {
-  const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  // 按单个换行符分割，保留空行结构
+  const paragraphs = text.split('\n');
   const align = format?.alignment || 'justify';
   const spacing = format?.spacing ?? 0.8;
 
   return paragraphs
     .map((paragraph, paraIdx) => {
       const trimmed = paragraph.trim();
+      // 空行渲染为带高度的空段落
+      if (!trimmed) {
+        return `<p style="margin:${spacing}em 0;text-align:${align};min-height:1em;">&nbsp;</p>`;
+      }
       // 找到当前段落中的高亮位置
       const segments = findHighlightSegments(trimmed, highlights, paraIdx);
 
@@ -294,7 +307,8 @@ function escapeHtml(text: string): string {
 // 将纯文本段落转为带搜索关键词高亮的 HTML
 export function textToHtmlWithSearch(text: string, query: string, format?: ParagraphFormat): string {
   if (!query.trim()) return textToHtml(text, format);
-  const paragraphs = text.split(/\n+/).filter((p) => p.trim());
+  // 按单个换行符分割，保留空行结构
+  const paragraphs = text.split('\n');
   // 先对搜索词做 HTML 转义，再转义正则特殊字符
   const escapedHtml = escapeHtml(query);
   const escapedRegex = escapedHtml.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -304,6 +318,11 @@ export function textToHtmlWithSearch(text: string, query: string, format?: Parag
 
   return paragraphs
     .map((p) => {
+      const trimmed = p.trim();
+      // 空行渲染为带高度的空段落
+      if (!trimmed) {
+        return `<p style="margin:${spacing}em 0;text-align:${align};min-height:1em;">&nbsp;</p>`;
+      }
       const contentHtml = escapeHtml(p.trim()).replace(
         regex,
         '<mark class="search-match">$1</mark>'
