@@ -224,3 +224,10 @@ mark.search-match-active {
   background-color: #EA580C;
   color: white;
 }
+
+/* Landing 页面需要滚动，覆盖全局 overflow: hidden */
+.landing-page {
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
+}

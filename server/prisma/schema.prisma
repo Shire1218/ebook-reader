@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  books      Book[]
+  bookmarks  Bookmark[]
+  highlights Highlight[]
+
+  @@map("users")
+}
+
+model Book {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  title           String
+  author          String
+  format          String
+  coverUrl        String   @map("cover_url")
+  fileSize        Int      @map("file_size")
+  progress        Float    @default(0)
+  currentLocation String   @default("") @map("current_location")
+  currentChapter  String   @default("") @map("current_chapter")
+  category        String   @default("")
+  filePath        String?  @map("file_path")
+  lastReadTime    DateTime @map("last_read_time")
+  importTime      DateTime @default(now()) @map("import_time")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user       User         @relation(fields: [userId], references: [id])
+  bookmarks  Bookmark[]
+  highlights Highlight[]
+
+  @@map("books")
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  bookId    String   @map("book_id")
+  location  String
+  chapter   String
+  progress  Float
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@map("bookmarks")
+}
+
+model Highlight {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  bookId            String   @map("book_id")
+  location          String
+  text              String
+  color             String
+  note              String?
+  chapter           String
+  paragraphIndex    Int?     @map("paragraph_index")
+  offsetInParagraph Int?     @map("offset_in_paragraph")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@map("highlights")
+}

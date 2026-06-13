@@ -28,6 +28,44 @@ import {
 import { decodeTxtBuffer, splitIntoChapters } from '@/utils/txtParser';
 import type { Bookmark as BookmarkType, TocItem, Highlight, HighlightColor, TextAlignment } from '@/types';
 
+// 从 contentEditable 的 HTML 中提取文本行，保留空行和换行结构
+// 处理 <p>、<div> 等块级元素以及 <br> 标签
+function htmlToTextLines(html: string): string[] {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+
+  // 收集所有块级元素（<p>、<div>）和 <br> 标签
+  const lines: string[] = [];
+  const blockElements = div.querySelectorAll('p, div');
+
+  if (blockElements.length === 0) {
+    // 没有块级元素，直接取文本内容并按换行分割
+    const text = div.textContent || '';
+    if (text) {
+      text.split(/\n/).forEach((line) => lines.push(line));
+    }
+    return lines;
+  }
+
+  blockElements.forEach((el) => {
+    // 处理元素内的 <br> 标签，将其视为换行
+    const innerHtml = el.innerHTML;
+    if (innerHtml.includes('<br')) {
+      // 有 <br> 标签，按 <br> 分割
+      const parts = innerHtml.split(/<br\s*\/?\s*>/i);
+      parts.forEach((part) => {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = part;
+        lines.push(tempDiv.textContent || '');
+      });
+    } else {
+      lines.push(el.textContent || '');
+    }
+  });
+
+  return lines;
+}
+
 // Toast 消息类型
 type ToastType = 'success' | 'error';
 
@@ -383,20 +421,9 @@ export default function Reader() {
       // 保存当前章节的编辑内容
       if (txtReaderRef.current?.isDirty()) {
         const currentHtml = txtReaderRef.current.getEditedContent();
-        const div = document.createElement('div');
-        div.innerHTML = currentHtml;
-        const paragraphs: string[] = [];
-        div.querySelectorAll('p').forEach((p) => {
-          const text = p.textContent?.trim() || '';
-          if (text) paragraphs.push(text);
-        });
-        // 如果没有 <p> 标签（如新建空文件后直接输入），回退提取纯文本
-        if (paragraphs.length === 0) {
-          const text = div.textContent?.trim() || '';
-          if (text) paragraphs.push(text);
-        }
+        const lines = htmlToTextLines(currentHtml);
         const chapterIdx = txtReaderRef.current.getCurrentChapterIndex();
-        editedChaptersRef.current[chapterIdx] = paragraphs.join('\n');
+        editedChaptersRef.current[chapterIdx] = lines.join('\n');
       }
 
       // 如果没有编辑任何章节，提示用户
@@ -427,8 +454,8 @@ export default function Reader() {
         } else if (i > 0) {
           fullText += '\n';
         }
-        // 使用编辑后的内容或原始内容
-        const content = editedChaptersRef.current[i] || chapter.content;
+        // 使用编辑后的内容或原始内容（用 in 判断，避免空字符串被 || 误判为 falsy）
+        const content = i in editedChaptersRef.current ? editedChaptersRef.current[i]! : chapter.content;
         fullText += content;
       }
 
@@ -593,19 +620,8 @@ export default function Reader() {
           // 章节切换了，保存上一章的编辑内容
           if (txtReaderRef.current.isDirty()) {
             const html = txtReaderRef.current.getEditedContent();
-            const div = document.createElement('div');
-            div.innerHTML = html;
-            const paragraphs: string[] = [];
-            div.querySelectorAll('p').forEach((p) => {
-              const text = p.textContent?.trim() || '';
-              if (text) paragraphs.push(text);
-            });
-            // 如果没有 <p> 标签（如新建空文件后直接输入），回退提取纯文本
-            if (paragraphs.length === 0) {
-              const text = div.textContent?.trim() || '';
-              if (text) paragraphs.push(text);
-            }
-            editedChaptersRef.current[lastEditChapterRef.current] = paragraphs.join('\n');
+            const lines = htmlToTextLines(html);
+            editedChaptersRef.current[lastEditChapterRef.current] = lines.join('\n');
           }
         }
         lastEditChapterRef.current = currentIdx;

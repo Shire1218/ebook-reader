@@ -421,6 +421,11 @@ const TxtReader = forwardRef<TxtReaderRef, TxtReaderProps>(function TxtReader({
 
     // 编辑模式下跳过批注渲染，防止 contentEditable DOM 被重置导致编辑状态丢失
     if (isEditMode) {
+      // 空白内容时插入空的 <p> 段落，确保 contentEditable 可正常接收输入
+      // 使用 <p></p> 而非单独的 <br>，避免浏览器行为不一致
+      if (!currentChapter.content) {
+        return '<p></p>';
+      }
       return textToHtml(currentChapter.content, paraFormat);
     }
 

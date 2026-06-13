@@ -76,3 +76,24 @@ export interface Highlight {
   paragraphIndex?: number;    // 段落索引（TXT 格式精确位置）
   offsetInParagraph?: number; // 在段落中的偏移位置（TXT 格式精确位置）
 }
+
+// 用户信息
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+}
+
+// 认证响应
+export interface AuthResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+}
+
+// API 统一响应
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}

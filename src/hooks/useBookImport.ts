@@ -1,7 +1,9 @@
 import { useCallback } from 'react';
 import { useBookStore } from '@/stores/bookStore';
+import { useAuthStore } from '@/stores/authStore';
 import { parseFileToBook, isSupportedFormat } from '@/utils/fileParser';
 import { saveBookFile } from '@/utils/db';
+import { apiUpload } from '@/utils/api';
 
 const ACCEPTED_FORMATS = '.epub,.pdf,.txt,.mobi';
 
@@ -13,14 +15,27 @@ export function useBookImport() {
     async (files: FileList | File[]) => {
       const fileArray = Array.from(files);
       const validFiles = fileArray.filter((f) => isSupportedFormat(f.name));
+      const isCloud = useAuthStore.getState().isAuthenticated;
 
       for (const file of validFiles) {
         const book = parseFileToBook(file);
-        // 保存书籍元信息
-        await addBook(book);
-        // 保存文件二进制数据到 IndexedDB
+        // 先保存文件二进制数据到 IndexedDB，确保文件数据不会丢失
         const arrayBuffer = await file.arrayBuffer();
         await saveBookFile(book.id, arrayBuffer);
+        // 再保存书籍元信息（bookStore 内部会处理云端同步）
+        await addBook(book);
+
+        // 云端模式下，额外上传文件到服务端
+        if (isCloud) {
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('book', JSON.stringify(book));
+            await apiUpload('/api/books', formData);
+          } catch {
+            // 上传失败不影响本地导入
+          }
+        }
       }
 
       return validFiles.length;
