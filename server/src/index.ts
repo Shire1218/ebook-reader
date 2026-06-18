@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.js';
 import bookRoutes from './routes/books.js';
 import bookmarkRoutes from './routes/bookmarks.js';
 import highlightRoutes from './routes/highlights.js';
+import readingStatsRoutes from './routes/readingStats.js';
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/bookmarks', bookmarkRoutes);
 app.use('/api/highlights', highlightRoutes);
+app.use('/api', readingStatsRoutes);
 
 // 健康检查
 app.get('/api/health', (_req, res) => {

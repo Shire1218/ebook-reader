@@ -15,9 +15,10 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  books      Book[]
-  bookmarks  Bookmark[]
-  highlights Highlight[]
+  books            Book[]
+  bookmarks        Bookmark[]
+  highlights       Highlight[]
+  readingSessions  ReadingSession[]
 
   @@map("users")
 }
@@ -40,9 +41,10 @@ model Book {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user       User         @relation(fields: [userId], references: [id])
-  bookmarks  Bookmark[]
-  highlights Highlight[]
+  user             User               @relation(fields: [userId], references: [id])
+  bookmarks        Bookmark[]
+  highlights       Highlight[]
+  readingSessions  ReadingSession[]
 
   @@map("books")
 }
@@ -80,4 +82,26 @@ model Highlight {
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@map("highlights")
+}
+
+model ReadingSession {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  bookId       String   @map("book_id")
+  startTime    DateTime @map("start_time")
+  endTime      DateTime @map("end_time")
+  duration     Int      // 阅读时长，单位：秒
+  startPage    String?  @map("start_page")
+  endPage      String?  @map("end_page")
+  startChapter String?  @map("start_chapter")
+  endChapter   String?  @map("end_chapter")
+  date         String   // 会话日期，格式 YYYY-MM-DD
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([userId, bookId])
+  @@map("reading_sessions")
 }

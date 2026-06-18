@@ -14,6 +14,7 @@ import type { TxtReaderRef } from '@/components/Reader/TxtReader';
 import type { PdfReaderRef } from '@/components/Reader/PdfReader';
 import type { MobiReaderRef } from '@/components/Reader/MobiReader';
 import { useKeyboardShortcuts, SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { useReadingTimer } from '@/hooks/useReadingTimer';
 import {
   addBookmark,
   getBookmarks,
@@ -152,6 +153,15 @@ export default function Reader() {
   const paragraphSpacing = usePreferenceStore((s) => s.paragraphSpacing);
   const setTextAlignment = usePreferenceStore((s) => s.setTextAlignment);
   const setParagraphSpacing = usePreferenceStore((s) => s.setParagraphSpacing);
+  const setCurrentBookId = usePreferenceStore((s) => s.setCurrentBookId);
+
+  // 进入阅读器时设置当前书籍 ID，使格式设置按书籍隔离
+  useEffect(() => {
+    if (bookId) {
+      setCurrentBookId(bookId);
+    }
+    return () => setCurrentBookId(null);
+  }, [bookId, setCurrentBookId]);
 
   const book = books.find((b) => b.id === bookId);
   const bookRef = useRef(book);
@@ -160,6 +170,14 @@ export default function Reader() {
   const [progress, setProgress] = useState(book?.progress ?? 0);
   const [currentLocation, setCurrentLocation] = useState(book?.currentLocation ?? '');
   const [currentChapterName, setCurrentChapterName] = useState(book?.currentChapter || '');
+
+  // 阅读计时 - 必须在 currentLocation 和 currentChapterName 定义之后
+  useReadingTimer({
+    bookId: bookId || '',
+    currentPage: currentLocation,
+    currentChapter: currentChapterName,
+    isActive: !!bookId && !isEditMode, // 编辑模式下不记录阅读时长
+  });
 
   // 主题背景映射
   const themeBg: Record<string, string> = {

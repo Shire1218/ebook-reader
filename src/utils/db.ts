@@ -1,12 +1,13 @@
-import type { Book, ReadingPreference, Bookmark, Highlight } from '@/types';
+import type { Book, ReadingPreference, Bookmark, Highlight, ReadingSession } from '@/types';
 
 const DB_NAME = 'ebook-reader-db';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const BOOKS_STORE = 'books';
 const PREFERENCES_STORE = 'preferences';
 const FILES_STORE = 'files';
 const BOOKMARKS_STORE = 'bookmarks';
 const HIGHLIGHTS_STORE = 'highlights';
+const READING_SESSIONS_STORE = 'readingSessions';
 
 // 打开 IndexedDB 数据库
 function openDB(): Promise<IDBDatabase> {
@@ -39,6 +40,14 @@ function openDB(): Promise<IDBDatabase> {
       // 删除旧的 textEdits 存储（如果存在）
       if (db.objectStoreNames.contains('textEdits')) {
         db.deleteObjectStore('textEdits');
+      }
+      // v10: 新增 readingSessions 存储
+      if (!db.objectStoreNames.contains(READING_SESSIONS_STORE)) {
+        const sessionStore = db.createObjectStore(READING_SESSIONS_STORE, { keyPath: 'id' });
+        sessionStore.createIndex('userId', 'userId', { unique: false });
+        sessionStore.createIndex('date', 'date', { unique: false });
+        sessionStore.createIndex('bookId', 'bookId', { unique: false });
+        sessionStore.createIndex('userId_date', ['userId', 'date'], { unique: false });
       }
     };
 
@@ -265,6 +274,95 @@ export async function deleteHighlight(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(HIGHLIGHTS_STORE, 'readwrite');
     const store = tx.objectStore(HIGHLIGHTS_STORE);
+    store.delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// 添加阅读会话
+export async function addReadingSession(session: ReadingSession): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readwrite');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
+    store.put(session);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// 获取指定日期的所有阅读会话
+export async function getReadingSessionsByDate(userId: string, date: string): Promise<ReadingSession[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readonly');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
+    const index = store.index('userId_date');
+    const request = index.getAll([userId, date]);
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 获取指定日期范围的所有阅读会话
+export async function getReadingSessionsByDateRange(userId: string, startDate: string, endDate: string): Promise<ReadingSession[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readonly');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
+    const index = store.index('userId');
+    const request = index.getAll(userId);
+    request.onsuccess = () => {
+      const sessions = request.result || [];
+      const filtered = sessions.filter((s: ReadingSession) => s.date >= startDate && s.date <= endDate);
+      resolve(filtered);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 获取指定书籍的所有阅读会话
+export async function getReadingSessionsByBook(userId: string, bookId: string): Promise<ReadingSession[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readonly');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
+    const index = store.index('bookId');
+    const request = index.getAll(bookId);
+    request.onsuccess = () => {
+      const sessions = request.result || [];
+      const filtered = sessions.filter((s: ReadingSession) => s.userId === userId);
+      resolve(filtered);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 获取用户的所有阅读会话
+export async function getAllReadingSessions(userId: string): Promise<ReadingSession[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readonly');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
+    const index = store.index('userId');
+    const request = index.getAll(userId);
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// 更新阅读会话
+export async function updateReadingSession(session: ReadingSession): Promise<void> {
+  return addReadingSession(session);
+}
+
+// 删除阅读会话
+export async function deleteReadingSession(id: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(READING_SESSIONS_STORE, 'readwrite');
+    const store = tx.objectStore(READING_SESSIONS_STORE);
     store.delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);

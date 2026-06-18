@@ -8,6 +8,7 @@ import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import Discover from '@/pages/Discover';
+import Stats from '@/pages/Stats';
 import { useAuthStore } from '@/stores/authStore';
 
 function AppRoutes() {
@@ -30,6 +31,7 @@ function AppRoutes() {
         <Route path="/reader/:bookId" element={<Reader />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/discover" element={<Discover />} />
+        <Route path="/stats" element={<Stats />} />
       </Route>
     </Routes>
   );

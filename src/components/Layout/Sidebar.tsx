@@ -1,4 +1,4 @@
-import { BookOpen, Settings, ChevronLeft, ChevronRight, Compass, LogIn, LogOut } from 'lucide-react';
+import { BookOpen, Settings, ChevronLeft, ChevronRight, Compass, LogIn, LogOut, BarChart3 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
@@ -7,6 +7,7 @@ import { useBookStore } from '@/stores/bookStore';
 const navItems = [
   { icon: BookOpen, label: '书架', path: '/' },
   { icon: Compass, label: '发现', path: '/discover' },
+  { icon: BarChart3, label: '统计', path: '/stats' },
   { icon: Settings, label: '设置', path: '/settings' },
 ];
 

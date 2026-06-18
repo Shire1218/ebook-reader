@@ -91,6 +91,21 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+// 阅读会话
+export interface ReadingSession {
+  id: string;
+  userId: string;
+  bookId: string;
+  startTime: number;      // 时间戳
+  endTime: number;        // 时间戳
+  duration: number;       // 秒
+  startPage?: string;
+  endPage?: string;
+  startChapter?: string;
+  endChapter?: string;
+  date: string;           // YYYY-MM-DD
+}
+
 // API 统一响应
 export interface ApiResponse<T> {
   success: boolean;
