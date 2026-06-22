@@ -482,7 +482,7 @@ router.get('/reading-stats/annual', async (req: AuthRequest, res: Response) => {
     const favoriteHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
 
     // 计算连续阅读天数
-    const readingDates = new Set(sessions.map((s) => s.date)).toArray().sort();
+    const readingDates = Array.from(new Set(sessions.map((s) => s.date))).sort();
     let longestStreak = 0;
     let currentStreak = 0;
     let prevDate: Date | null = null;

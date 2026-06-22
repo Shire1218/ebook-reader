@@ -131,7 +131,8 @@ export default function MonthlyChart({ data, year, month, onMonthChange }: Month
         <div className="h-48 flex items-end gap-1">
           {data.map((day) => {
             const height = maxDuration > 0 ? (day.duration / maxDuration) * 100 : 0;
-            const dayNum = parseInt(day.date.split('-')[2], 10);
+            const dateParts = day.date.split('-');
+            const dayNum = dateParts.length >= 3 ? parseInt(dateParts[2] || '0', 10) : 0;
             const isWeekend = dayNum % 7 === 0 || dayNum % 7 === 6;
 
             return (

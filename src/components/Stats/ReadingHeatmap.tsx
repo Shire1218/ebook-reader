@@ -45,7 +45,7 @@ export default function ReadingHeatmap({ data, year, onYearChange }: ReadingHeat
         return level.color;
       }
     }
-    return HEATMAP_COLORS[0].color;
+    return HEATMAP_COLORS[0]?.color || '#f5f0e8';
   };
 
   // 生成全年数据
@@ -92,11 +92,17 @@ export default function ReadingHeatmap({ data, year, onYearChange }: ReadingHeat
 
     yearData.forEach((week, weekIndex) => {
       week.forEach((day) => {
-        if (day.date) {
-          const month = parseInt(day.date.split('-')[1], 10) - 1;
-          if (month !== currentMonth) {
-            labels.push({ month: MONTHS[month], colIndex: weekIndex });
-            currentMonth = month;
+        if (day.date && day.date.includes('-')) {
+          const parts = day.date.split('-');
+          if (parts.length >= 2 && parts[1]) {
+            const month = parseInt(parts[1], 10) - 1;
+            if (month !== currentMonth && month >= 0 && month < 12) {
+              const monthName = MONTHS[month];
+              if (monthName) {
+                labels.push({ month: monthName, colIndex: weekIndex });
+                currentMonth = month;
+              }
+            }
           }
         }
       });
