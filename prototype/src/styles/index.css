@@ -1,0 +1,287 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局基础样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 全局主题变量 */
+:root {
+  /* light 主题（默认） */
+  --theme-bg-primary: #FAF8F5;
+  --theme-bg-secondary: #F5F0E8;
+  --theme-bg-tertiary: #EDE8E0;
+  --theme-text-primary: #2C2420;
+  --theme-text-secondary: #6B5B4E;
+  --theme-text-tertiary: #9B8B7E;
+  --theme-border: #E5DDD5;
+  --theme-accent: #C8875E;
+  --theme-scrollbar-thumb: #d4c5b3;
+  --theme-scrollbar-hover: #c8875e;
+}
+
+[data-theme="dark"] {
+  --theme-bg-primary: #1A1A1A;
+  --theme-bg-secondary: #252525;
+  --theme-bg-tertiary: #333333;
+  --theme-text-primary: #D4D4D4;
+  --theme-text-secondary: #A0A0A0;
+  --theme-text-tertiary: #707070;
+  --theme-border: #404040;
+  --theme-accent: #D4956B;
+  --theme-scrollbar-thumb: #555555;
+  --theme-scrollbar-hover: #D4956B;
+}
+
+[data-theme="sepia"] {
+  --theme-bg-primary: #F5F0EA;
+  --theme-bg-secondary: #EBE3D7;
+  --theme-bg-tertiary: #DDD5C7;
+  --theme-text-primary: #2C2420;
+  --theme-text-secondary: #6B5B4E;
+  --theme-text-tertiary: #9B8B7E;
+  --theme-border: #D5CAB9;
+  --theme-accent: #C8875E;
+  --theme-scrollbar-thumb: #C5B9A8;
+  --theme-scrollbar-hover: #c8875e;
+}
+
+[data-theme="green"] {
+  --theme-bg-primary: #E8F0E4;
+  --theme-bg-secondary: #D8E8D2;
+  --theme-bg-tertiary: #C8D8C2;
+  --theme-text-primary: #333333;
+  --theme-text-secondary: #556B55;
+  --theme-text-tertiary: #779977;
+  --theme-border: #B8C8B2;
+  --theme-accent: #6B8E6B;
+  --theme-scrollbar-thumb: #A8C0A0;
+  --theme-scrollbar-hover: #6B8E6B;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-scrollbar-hover);
+}
+
+/* 主题背景过渡 */
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* 批注虚线下划线标记 */
+.highlight-note {
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: currentColor;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+
+/* 批注详情弹窗动画 */
+@keyframes note-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.note-popover {
+  animation: note-popover-in 0.15s ease-out;
+}
+
+/* 文本截断 */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 面板滑入动画 */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* 弹窗缩放动画 */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+/* 书籍卡片入场动画 */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+/* 进度条样式增强 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.1);
+  outline: none;
+  transition: background 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8875e;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.3);
+  box-shadow: 0 2px 8px rgba(200, 135, 94, 0.5);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c8875e;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* 搜索关键词高亮 */
+mark.search-match {
+  background-color: #FDE68A;
+  color: inherit;
+  padding: 1px 2px;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* 当前选中的搜索匹配项 - 闪烁效果 */
+mark.search-match-active {
+  background-color: #F97316;
+  color: white;
+  outline: 2px solid #F97316;
+  outline-offset: 1px;
+  transition: background-color 0.3s, outline 0.3s;
+}
+
+/* 暗色主题下的搜索高亮 */
+.bg-night-bg mark.search-match {
+  background-color: #92400E;
+  color: #FDE68A;
+}
+
+.bg-night-bg mark.search-match-active {
+  background-color: #EA580C;
+  color: white;
+}
+
+/* Landing 页面需要滚动，覆盖全局 overflow: hidden */
+.landing-page {
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
+}
